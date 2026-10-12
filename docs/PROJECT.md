@@ -24,7 +24,7 @@ Each piece gets its own spec, plan and build. All four are in scope; none is dro
 
 | # | Piece | What it covers from the request | Status |
 |---|-------|---------------------------------|--------|
-| 1 | Load timeline + memory probe | Measure where load time, menu lag and memory go | spec written |
+| 1 | Load timeline + memory probe | Measure where load time, menu lag and memory go | built, deployed to new2, start-up measured 2026-10-12 (docs/PROBE-RESULTS-2026-10-12.md); spawn + map part needs Ken |
 | 2 | Menu-first scheduler | Order of what loads first, background loading, off-thread work, menu usable while loading | not started |
 | 3 | Memory governor | Free things not in use when memory runs short: maps, sosig voice lines, unused guns; hot swap | not started |
 | 4 | Modul part-level loading | Load only the parts a modular gun uses, not every bundle of every mod in the part group | not started |
