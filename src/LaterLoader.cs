@@ -92,7 +92,17 @@ namespace FastLoad
                 string name = LatePlugins.NextName();
                 Log.LogInfo("Later plugins: starting " + name + " now (the game may stand still while it loads)");
                 string report;
-                LatePlugins.LoadNext(out report);
+                // The game stands still while it starts: black in the headset beats a stuck picture.
+                bool curtain = !Curtain.Closed;
+                if (curtain) Curtain.Close();
+                try
+                {
+                    LatePlugins.LoadNext(out report);
+                }
+                finally
+                {
+                    if (curtain) Curtain.Open(0.3f);
+                }
                 Log.LogInfo("Later plugins: " + report + ". " + LatePlugins.Remaining + " left.");
                 m_wait.Reset();
                 m_wait.Start();

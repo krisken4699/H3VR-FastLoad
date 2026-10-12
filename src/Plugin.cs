@@ -33,6 +33,14 @@ namespace FastLoad
                 + "Example: FastDllLookup = false");
             Logger.LogInfo("Fast DLL lookup so far: " + DllLookup.Summary());
 
+            Config.Bind("Speed", "WarmDlls", true,
+                "Faster first start of the day: the moment the game starts, read every mod DLL once in the background, on 8 threads.\n"
+                + "A start after the PC has done other things reads those files one by one and can sit for half a minute before the game window\n"
+                + "even shows; read ahead in parallel they come from Windows' file cache. Nothing is changed and nothing is kept.\n"
+                + "The result is one line in the log: 'Warm DLL read: warm dlls=856 ... totalMs=...'.\n"
+                + "Example: WarmDlls = false");
+            Logger.LogInfo("Warm DLL read: " + Warm.Mode);
+
             ConfigEntry<string> laterPlugins = Config.Bind("Later", "Plugins", "",
                 "Faster start: plugins to hold back until the game is on screen. BepInEx starts every plugin before the first frame, one after\n"
                 + "another; a few heavy ones can take most of that time. The plugins named here are started after you are in the map instead.\n"
@@ -62,6 +70,8 @@ namespace FastLoad
 
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
+                + "The menu is never shown: the headset stays on the loading screen until you stand in the scene. (The game engine always loads\n"
+                + "its menu scene first, that cannot be switched off; the chosen scene starts loading behind it the moment it exists.)\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
                 + "Examples:  Scene = IndoorRange_Updated     Scene = ArizonaTargets     Scene = ProvingGround     Scene = DriftWood (a modded map)\n"
                 + "How to find a name:\n"
@@ -73,8 +83,8 @@ namespace FastLoad
                 + "The wrist menu's return to main menu works as always; the jump happens once per game start.");
             ConfigEntry<StartWhen> startWhen = Config.Bind("Start", "When", StartWhen.Immediately,
                 "When to go to [Start] Scene.\n"
-                + "Immediately: the moment the main menu has loaded. Mods are still loading in the background then, so the first minute or so in the map can stutter and the item spawner fills up as it goes.\n"
-                + "AfterItemsLoaded: wait in the menu until OtherLoader reports 'All items loaded', then go. Smooth from the start, item spawner complete.\n"
+                + "Immediately: the menu is never shown. Mods are still loading in the background when you arrive, so the first minute or so in the map can stutter and the item spawner fills up as it goes.\n"
+                + "AfterItemsLoaded: wait in the menu (shown as usual) until OtherLoader reports 'All items loaded', then go. Smooth from the start, item spawner complete.\n"
                 + "Example: When = AfterItemsLoaded");
             try
             {

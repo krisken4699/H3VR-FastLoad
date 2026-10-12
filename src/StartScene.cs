@@ -16,9 +16,14 @@ namespace FastLoad
     }
 
     /// <summary>
-    /// "[Start] Scene": go straight from the main menu to a chosen scene when the game starts, once. Also the two
-    /// ways to find a scene's name: a console line on every scene load, and BepInEx/FastLoad/scenes.txt.
+    /// "[Start] Scene": go straight to a chosen scene when the game starts, once. Also the two ways to find a
+    /// scene's name: a console line on every scene load, and BepInEx/FastLoad/scenes.txt.
     /// Works with the probe switched off.
+    ///
+    /// The engine always loads the menu scene first. With When = Immediately the menu is never shown: the moment
+    /// it exists (before its first frame) the headset goes to the loading screen and, for one of the game's own
+    /// scenes, that scene starts loading on Unity's loading thread, ahead of everything the mods queue up in the
+    /// first frame. A modded map has to wait for its loader to register it; the menu stays hidden meanwhile.
     /// </summary>
     public sealed class StartScene : MonoBehaviour
     {
@@ -26,8 +31,12 @@ namespace FastLoad
         public StartWhen When = StartWhen.Immediately;
         public ManualLogSource Log;
 
-        /// <summary>The menu's own start-up code gets this long before the jump.</summary>
+        /// <summary>The menu's own start-up code gets this long before a jump that goes through the game's own loader.</summary>
         private const double SettleSeconds = 1.0;
+        /// <summary>The menu is hidden for this long at most while a modded map is still being looked for.</summary>
+        private const double LookCurtainSeconds = 45.0;
+        /// <summary>A direct load that has not arrived by then gives the picture back.</summary>
+        private const double ArriveCurtainSeconds = 90.0;
         /// <summary>A name that is not known yet may belong to a map its loader has not registered yet.</summary>
         private const double GiveUpSeconds = 120.0;
         /// <summary>AfterItemsLoaded on a profile where the "all items loaded" line never comes.</summary>
@@ -44,6 +53,8 @@ namespace FastLoad
         private bool m_saidLooking;
         private bool m_jumped;
         private readonly Stopwatch m_sinceJump = new Stopwatch();
+        /// <summary>True while a scene asked for by Early is on its way.</summary>
+        private bool m_direct;
 
         /// <summary>True from the game's start until the [Start] Scene has loaded, or it is clear that there is no jump.</summary>
         public static bool Busy;
@@ -68,8 +79,8 @@ namespace FastLoad
                 m_watch = new ItemsLoadedWatch();
                 BepInEx.Logging.Logger.Listeners.Add(m_watch);
             }
-            Log.LogInfo("Start scene: will go to '" + Wanted.Trim() + "' when the main menu has loaded ("
-                + (When == StartWhen.Immediately ? "right away" : "after all items are loaded") + ")");
+            Log.LogInfo("Start scene: will go to '" + Wanted.Trim() + "' "
+                + (When == StartWhen.Immediately ? "without showing the main menu" : "from the main menu, after all items are loaded"));
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -87,7 +98,7 @@ namespace FastLoad
                 if (m_firstSceneSeen)
                 {
                     // The scene the jump asked for (or whatever came instead) is here.
-                    if (m_jumped) Busy = false;
+                    if (m_jumped) Arrived();
                     return;
                 }
                 m_firstSceneSeen = true;
@@ -95,6 +106,7 @@ namespace FastLoad
                 if (scene.name.StartsWith("MainMenu", StringComparison.Ordinal))
                 {
                     m_sinceMenu.Start();
+                    if (When == StartWhen.Immediately) Early();
                 }
                 else
                 {
@@ -121,6 +133,7 @@ namespace FastLoad
                 }
                 // A jump that never arrives must not keep others waiting.
                 if (Busy && m_jumped && m_sinceJump.Elapsed.TotalSeconds > 120.0) Busy = false;
+                if (Curtain.Closed) CurtainWatch();
                 if (m_done || !m_sinceMenu.IsRunning) return;
                 Step(m_sinceMenu.Elapsed.TotalSeconds);
             }
@@ -202,6 +215,74 @@ namespace FastLoad
             Log.LogWarning("Start scene: no scene or modded map is called '" + Wanted.Trim() + "'. Staying in the menu."
                 + (close.Length > 0 ? " Did you mean: " + close + "?" : "") + " Every name that works is listed in "
                 + ListPath() + (AtlasBridge.Found ? "" : " (Atlas, which loads modded maps, is not installed)"));
+        }
+
+        /// <summary>
+        /// Runs inside the menu scene's "loaded" call, before its first frame. One of the game's own scenes starts
+        /// loading here; anything else is left to Step, with the menu hidden.
+        /// </summary>
+        private void Early()
+        {
+            Pick pick = StartPick.Resolve(Wanted, GameScenes(), AtlasBridge.Maps());
+            if (pick.Kind == PickKind.Game)
+            {
+                // Step says so in the log.
+                if (string.Equals(pick.Value, SceneManager.GetActiveScene().name, StringComparison.Ordinal)) return;
+
+                ThreadPriority before = Application.backgroundLoadingPriority;
+                Curtain.Close();
+                // Hand finished pieces to the scene as fast as they come; the game's own loader would crawl here.
+                Application.backgroundLoadingPriority = ThreadPriority.High;
+                AsyncOperation op = SceneManager.LoadSceneAsync(pick.Value, LoadSceneMode.Single);
+                if (op == null)
+                {
+                    Application.backgroundLoadingPriority = before;
+                    Curtain.Open(0f);
+                    Log.LogWarning("Start scene: Unity would not start loading '" + pick.Value + "' this early; going through the menu instead");
+                    return;
+                }
+                Finish();
+                Jumped();
+                m_direct = true;
+                Log.LogInfo("Start scene: loading '" + pick.Value + "' now; the main menu is not shown");
+                return;
+            }
+            // A modded map is registered by its loader a little later (or the name is wrong): Step finds out.
+            Curtain.Close();
+        }
+
+        /// <summary>The scene after the menu is here.</summary>
+        private void Arrived()
+        {
+            Busy = false;
+            if (m_direct)
+            {
+                m_direct = false;
+                // What the game's own scene loader leaves behind after every load: slow, smooth background loading.
+                Application.backgroundLoadingPriority = ThreadPriority.Low;
+            }
+            if (Curtain.Closed) Curtain.Open(0.5f);
+        }
+
+        /// <summary>The picture comes back whenever the reason it was taken away is gone, or took too long.</summary>
+        private void CurtainWatch()
+        {
+            if (m_jumped)
+            {
+                if (m_sinceJump.Elapsed.TotalSeconds < ArriveCurtainSeconds) return;
+                Curtain.Open(0.3f);
+                Log.LogWarning("Start scene: '" + Wanted.Trim() + "' has not arrived after " + (int)ArriveCurtainSeconds + " s; showing the game again");
+            }
+            else if (m_done)
+            {
+                // Staying in the menu after all; the reason is in the log line before this.
+                Curtain.Open(0.3f);
+            }
+            else if (m_sinceMenu.Elapsed.TotalSeconds >= LookCurtainSeconds)
+            {
+                Curtain.Open(0.3f);
+                Log.LogInfo("Start scene: still looking for '" + Wanted.Trim() + "'; showing the main menu meanwhile");
+            }
         }
 
         private void Jumped()

@@ -36,6 +36,12 @@ namespace FastLoad.Early
                 string cfgPath = Path.Combine(Paths.ConfigPath, ConfigFile);
                 string cfg = File.Exists(cfgPath) ? File.ReadAllText(cfgPath) : "";
                 // Speed-ups come first and do not depend on the probe.
+                if (CfgPeek.Bool(cfg, "Speed", "WarmDlls", true))
+                {
+                    Warm.OnDone = delegate(string summary) { Timeline.Write("RUN", summary); };
+                    Warm.Start(new string[] { Paths.PluginPath, Paths.PatcherPluginPath, Paths.BepInExAssemblyDirectory }, 8);
+                }
+                log.LogInfo("Warm DLL read: " + Warm.Mode);
                 if (CfgPeek.Bool(cfg, "Speed", "FastDllLookup", true)) DllLookup.Install();
                 log.LogInfo("Fast DLL lookup: " + DllLookup.Mode);
 
