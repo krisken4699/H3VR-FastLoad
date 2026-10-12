@@ -112,13 +112,22 @@ namespace FastLoad
             List<string> close = new List<string>();
             for (int i = 0; i < gameScenes.Count && close.Count < 5; i++)
             {
-                if (Near(gameScenes[i], w)) close.Add(gameScenes[i]);
+                if (Near(gameScenes[i], w) && !Has(close, gameScenes[i])) close.Add(gameScenes[i]);
             }
             for (int i = 0; i < modded.Count && close.Count < 5; i++)
             {
-                if (Near(modded[i].Id, w) || Near(modded[i].Name, w)) close.Add(modded[i].Id);
+                if ((Near(modded[i].Id, w) || Near(modded[i].Name, w)) && !Has(close, modded[i].Id)) close.Add(modded[i].Id);
             }
             return string.Join(", ", close.ToArray());
+        }
+
+        private static bool Has(List<string> names, string name)
+        {
+            for (int i = 0; i < names.Count; i++)
+            {
+                if (string.Equals(names[i], name, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
         }
 
         private static bool Near(string name, string w)

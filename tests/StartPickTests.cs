@@ -58,7 +58,7 @@ namespace FastLoad.Tests
 
             // A near miss gets the real names offered.
             game.Add("IndoorRange_Updated");
-            T.Eq("IndoorRange_Updated", StartPick.Suggest("indoorrange_", game, maps), "suggests the game scene that contains the text");
+            T.Eq("IndoorRange, IndoorRange_Updated", StartPick.Suggest("indoorrange_", game, maps), "suggests names on both sides of the text, each once");
             T.Eq("abass20.junglevalley", StartPick.Suggest("jungle", game, maps), "suggests a modded map by part of its name");
             T.Eq("ArizonaTargets", StartPick.Suggest("ArizonaTargets_Day", game, maps), "suggests a name the text contains");
             T.Eq("", StartPick.Suggest("zzzz", game, maps), "nothing close, nothing suggested");
