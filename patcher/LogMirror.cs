@@ -29,6 +29,7 @@ namespace FastLoad.Early
                     int which = Phases.LastMarked;
                     Timeline.Write("PHS", (which >= 0 ? Phases.Names[which] : "?") + " at " + now + " commit=" + LineFormat.Mb(commit)
                         + " ws=" + LineFormat.Mb(ws) + " sysfree=" + LineFormat.Mb(free));
+                    Timeline.Write("RES", DllLookup.Summary());
                     // Plugins start loading right after this line: hook bundle loading before any of their code runs.
                     if (string.Equals(text, RunFiles.StartedMark, StringComparison.Ordinal))
                     {

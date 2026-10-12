@@ -35,6 +35,10 @@ namespace FastLoad.Early
             {
                 string cfgPath = Path.Combine(Paths.ConfigPath, ConfigFile);
                 string cfg = File.Exists(cfgPath) ? File.ReadAllText(cfgPath) : "";
+                // Speed-ups come first and do not depend on the probe.
+                if (CfgPeek.Bool(cfg, "Speed", "FastDllLookup", true)) DllLookup.Install();
+                log.LogInfo("Fast DLL lookup: " + DllLookup.Mode);
+
                 if (!CfgPeek.Bool(cfg, "Probe", "Enabled", true))
                 {
                     log.LogInfo("Probe is off ([Probe] Enabled = false in " + ConfigFile + ")");
@@ -78,6 +82,8 @@ namespace FastLoad.Early
                     + " restartOnLaunch=" + (Timeline.RestartCostMs >= 0 ? "yes cost=" + Timeline.RestartCostMs + "ms" : "no")
                     + " prunedRuns=" + pruned.Count + " args=" + Timeline.Args);
 
+                ScanTimers.Install();
+                Timeline.Write("RUN", "dllLookup=" + DllLookup.Mode + " scanTimers=" + ScanTimers.Mode);
                 Logger.Listeners.Add(new LogMirror());
                 log.LogInfo("Probe on: " + RunFiles.RunPath(dir, stamp));
             }

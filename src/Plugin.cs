@@ -26,6 +26,13 @@ namespace FastLoad
             Config.Bind("Probe", "NativeHooks", false,
                 "Also hook the engine-native bundle load methods. Leave off unless the report's cross-check shows missed loads. Takes effect at the next game start. Example: true");
 
+            Config.Bind("Speed", "FastDllLookup", true,
+                "Faster start: when the game asks for an assembly that is not loaded, BepInEx searches every folder of the profile again, each time.\n"
+                + "On a big profile that is thousands of folders per question and many questions. With this on, the folders are read once and every\n"
+                + "question is answered from that list. The answers are the same. Turn off only to compare start-up times.\n"
+                + "Example: FastDllLookup = false");
+            Logger.LogInfo("Fast DLL lookup so far: " + DllLookup.Summary());
+
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
