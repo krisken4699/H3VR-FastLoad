@@ -13,6 +13,7 @@ namespace FastLoad.Tests
             RunFilesTests.Run();
             PhasesTests.Run();
             BundleLedgerTests.Run();
+            FrameAndBurstTests.Run();
 
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed > 0 ? 1 : 0;
