@@ -229,3 +229,15 @@ causes; fixes that work for any profile.
   (default: `JerryTF.ThngFlingerPGin.SearchTarget@0.5`). After: mod code 0.69 ms idle (was 2.49), 0.95 ms with guns and
   sosigs (was 2.92); frame 14.2 ms (was 15.7).
 - Not done yet from the request: what modded *models* cost in view (triangles, materials, lights per item).
+
+## 2026-10-13 request: unload setting, load only what is needed (Ken, verbatim)
+
+"have settings to unload things or not. on by default. unload by like if a mod is just sitting there, user spawned its
+guns to load it but delete the guns and anything else from that mod from the scene so now its just sitting for a
+configurable amount of time, unload it silently. unloading better NOT lag the game at all aight? also u say the load
+things one by one thing. do it. load only the thing needed and any dependencies for it. not like u load the gun but not
+its scripts."
+
+Items: (1) setting to unload or not, default on; (2) content that was used and is no longer in the scene is unloaded
+after a configurable time; (3) silently; (4) unloading must not cause lag; (5) modular guns: load only the part packs
+the gun needs plus whatever those need, never a gun without what it depends on.

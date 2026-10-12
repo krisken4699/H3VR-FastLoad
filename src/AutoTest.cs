@@ -29,6 +29,7 @@ namespace FastLoad
     ///   model id                      CustomSosigModelFramework: pick that model (Sosig, Random or a pack id)
     ///   scene name                    load a game scene or a modded map, wait until it is there
     ///   clear                         remove what spawn and sosig made
+    ///   check                         is what was spawned whole: renderers, missing materials, error shaders, missing meshes
     ///   profile 20 label              time every mod's per-frame code for 20 s, to lag_*.txt (patches stay in until the game closes)
     ///   icons drop | icons check      one pass of the icon governor / ask for a few icons and draw them, to see that they come back
     ///   census label counts           object counts only (the full census reads every dropped picture back in)
@@ -185,6 +186,7 @@ namespace FastLoad
                     else if (verb == "model") m_note = PickModel(rest);
                     else if (verb == "scene") m_step = new SceneStep(rest);
                     else if (verb == "clear") m_note = Clear();
+                    else if (verb == "check") m_note = Check();
                     else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
                     else if (verb == "quit")
@@ -388,6 +390,37 @@ namespace FastLoad
             flat.y = 0f;
             if (flat.sqrMagnitude < 0.01f) flat = Vector3.forward;
             return head.position + flat.normalized * distance + Vector3.up * up;
+        }
+
+        /// <summary>The same numbers with a feature on and off = the feature left nothing out.</summary>
+        private string Check()
+        {
+            int objects = 0, renderers = 0, noMaterial = 0, errorShader = 0, noMesh = 0, components = 0, transforms = 0;
+            for (int i = 0; i < m_made.Count; i++)
+            {
+                GameObject go = m_made[i];
+                if (go == null) continue;
+                objects++;
+                transforms += go.GetComponentsInChildren<Transform>(true).Length;
+                components += go.GetComponentsInChildren<Component>(true).Length;
+                Renderer[] rs = go.GetComponentsInChildren<Renderer>(true);
+                renderers += rs.Length;
+                for (int r = 0; r < rs.Length; r++)
+                {
+                    if (rs[r] is ParticleSystemRenderer) continue;
+                    Material[] mats = rs[r].sharedMaterials;
+                    if (mats.Length == 0) noMaterial++;
+                    for (int m = 0; m < mats.Length; m++)
+                    {
+                        if (mats[m] == null) noMaterial++;
+                        else if (mats[m].shader == null || mats[m].shader.name == "Hidden/InternalErrorShader") errorShader++;
+                    }
+                }
+                MeshFilter[] filters = go.GetComponentsInChildren<MeshFilter>(true);
+                for (int f = 0; f < filters.Length; f++) if (filters[f].sharedMesh == null) noMesh++;
+            }
+            return "objects=" + objects + " transforms=" + transforms + " components=" + components + " renderers=" + renderers + " missingMaterial=" + noMaterial
+                + " errorShader=" + errorShader + " missingMesh=" + noMesh;
         }
 
         private string Clear()

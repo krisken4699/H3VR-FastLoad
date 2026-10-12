@@ -69,6 +69,31 @@ namespace FastLoad
                 }
             }
 
+            ConfigEntry<bool> unload = Config.Bind("Unload", "Enabled", true,
+                "Unload what you are done with. A gun you spawned and deleted, a map you left: once nothing of it is in the scene any more, its\n"
+                + "textures are dropped from memory after [Unload] IdleSeconds. Nothing is shown or logged when that happens, and it is spread\n"
+                + "over frames (at most 1.5 ms of work in any frame) so it does not hitch. If you spawn the thing again it is read back in.\n"
+                + "Off: whatever was in the scene once stays in memory until the game closes. Things that were loaded but never shown at all\n"
+                + "(see [OnDemand]) are dropped either way.\n"
+                + "Example: Enabled = false");
+            ConfigEntry<float> idle = Config.Bind("Unload", "IdleSeconds", 120f,
+                "How long something has to be gone from the scene before it is unloaded, in seconds. Shorter frees memory sooner; longer avoids\n"
+                + "reading things back in when you delete a gun and spawn it again a moment later.\n"
+                + "Example: IdleSeconds = 30     Example: IdleSeconds = 600");
+            Unloading.Enabled = unload.Value;
+            Unloading.IdleSeconds = Math.Max(5.0, idle.Value);
+
+            ConfigEntry<bool> modularParts = Config.Bind("OnDemand", "ModularParts", true,
+                "Modular guns: load only the part packs that hold the parts on the gun (plus the other files of those same mods), instead of\n"
+                + "every pack that has any part for any of the gun's part points. On the profile this was built on, one AR needed 48 packs and\n"
+                + "about a minute before it appeared. The other packs of a part group load when a workshop panel for that group appears, and the\n"
+                + "panel shows them as soon as they are in.\n"
+                + "Which pack holds which part is learned as packs load and remembered between game starts, so the first modular gun after\n"
+                + "installing FastLoad (or a new part mod) still loads everything once.\n"
+                + "Side effect: a gun that picks random parts picks among the packs loaded so far.\n"
+                + "Example: ModularParts = false");
+            MwoBridge.PartLevel = modularParts.Value;
+
             ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", true,
                 "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
                 + "platform in full on the profile this was built on: 8600 textures, +31 GB, for the handful of parts on the gun.\n"
@@ -125,8 +150,8 @@ namespace FastLoad
 
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
-                + "The menu is never shown: the headset stays on the loading screen until you stand in the scene. (The game engine always loads\n"
-                + "its menu scene first, that cannot be switched off; the chosen scene starts loading behind it the moment it exists.)\n"
+                + "You start in the main menu as always; the loading window says 'Loading map <name>' and the scene changes when it is in.\n"
+                + "Nothing is blacked out while it loads.\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
                 + "Examples:  Scene = IndoorRange_Updated     Scene = ArizonaTargets     Scene = ProvingGround     Scene = DriftWood (a modded map)\n"
                 + "How to find a name:\n"
@@ -138,8 +163,8 @@ namespace FastLoad
                 + "The wrist menu's return to main menu works as always; the jump happens once per game start.");
             ConfigEntry<StartWhen> startWhen = Config.Bind("Start", "When", StartWhen.Immediately,
                 "When to go to [Start] Scene.\n"
-                + "Immediately: the menu is never shown. Mods are still loading in the background when you arrive, so the first minute or so in the map can stutter and the item spawner fills up as it goes.\n"
-                + "AfterItemsLoaded: wait in the menu (shown as usual) until OtherLoader reports 'All items loaded', then go. Smooth from the start, item spawner complete.\n"
+                + "Immediately: a second after the main menu is up. Mods are still loading in the background when you arrive, so the first minute or so in the map can stutter and the item spawner fills up as it goes.\n"
+                + "AfterItemsLoaded: wait in the menu until OtherLoader reports 'All items loaded', then go. Smooth from the start, item spawner complete.\n"
                 + "Example: When = AfterItemsLoaded");
             try
             {

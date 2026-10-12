@@ -40,6 +40,10 @@
       <HintPath>C:\Users\Hp\AppData\Roaming\com.kesomannen.gale\h3vr\profiles\new2\BepInEx\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="ModularWorkshop">
+      <HintPath>C:\Users\Hp\AppData\Roaming\com.kesomannen.gale\h3vr\profiles\new2\BepInEx\plugins\cityrobo-ModularWorkshop\ModularWorkshop.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine">
       <HintPath>C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed\UnityEngine.dll</HintPath>
       <Private>false</Private>

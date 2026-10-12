@@ -1,0 +1,17 @@
+wait items
+wait 12
+spawn ModulAR15                  # with a learned index: only the packs of the parts on the gun
+wait 6
+check
+clear
+wait 4
+spawn NWAR2-HK416D
+wait 4
+check
+clear
+spawn ModulAK101Factory
+wait 4
+check
+clear
+wait 6
+quit

@@ -28,6 +28,8 @@ namespace FastLoad
         private static readonly Dictionary<string, bool> s_begun = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         public static string Mode = "off";
+        /// <summary>"[OnDemand] ModularParts".</summary>
+        public static bool PartLevel = true;
 
         public static void Install(ManualLogSource log)
         {
@@ -66,6 +68,7 @@ namespace FastLoad
                 h.Patch(one, null, new HarmonyMethod(typeof(MwoBridge).GetMethod("OnePost", Any)));
                 h.Patch(many, new HarmonyMethod(typeof(MwoBridge).GetMethod("ManyPre", Any)));
                 Mode = "on";
+                if (PartLevel) PartsDoor(log, h, loader);
             }
             catch (Exception e)
             {
@@ -73,6 +76,17 @@ namespace FastLoad
             }
             if (Mode != "on") log.LogWarning("ModulWorkshop_Optimizer bridge: " + Mode + ". Modular loads work as without it; the loading window does not count them.");
         }
+
+        /// <summary>The only way to MwoParts, which has ModularWorkshop's types in it.</summary>
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void PartsDoor(ManualLogSource log, Harmony h, Type loader)
+        {
+            MwoParts.Install(log, h, loader);
+            log.LogInfo("Modular parts on demand: " + MwoParts.Mode);
+        }
+
+        /// <summary>Bundle file the optimizer is working on in this very step (MwoParts reads it while the bundle registers).</summary>
+        public static string CurrentPath;
 
         private static bool Registered(string path)
         {
@@ -148,6 +162,8 @@ namespace FastLoad
                 if (m_token == 0 && !m_over)
                     m_token = LoadFeed.Begin(BundleLedger.NameOf(m_path), BundleLedger.ModOf(m_path), true, m_announced, Clock.NowMs);
                 bool more;
+                string before = CurrentPath;
+                CurrentPath = m_path;
                 try
                 {
                     more = m_inner.MoveNext();
@@ -156,6 +172,10 @@ namespace FastLoad
                 {
                     Close();
                     throw;
+                }
+                finally
+                {
+                    CurrentPath = before;
                 }
                 if (!more) Close();
                 return more;

@@ -53,6 +53,7 @@ namespace FastLoad
             try
             {
                 if (Boost) BoostStep();
+                if (MwoBridge.PartLevel && MwoBridge.Mode == "on") PartsTick();
                 if (!ShowWindow || m_broken) return;
                 string text;
                 bool show = LoadFeed.Line(Clock.NowMs, MinAgeMs, out text);
@@ -127,6 +128,12 @@ namespace FastLoad
                 if (Application.backgroundLoadingPriority == BoostTo) Application.backgroundLoadingPriority = m_before;
                 Timeline.Write("DEF", "background loading back to " + Application.backgroundLoadingPriority);
             }
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        private static void PartsTick()
+        {
+            MwoParts.Tick();
         }
 
         private static Transform Head()

@@ -39,6 +39,14 @@ namespace FastLoad
         private readonly Dictionary<int, Sprite> m_known = new Dictionary<int, Sprite>();
         /// <summary>Textures that hold pixels as far as this knows, by instance id.</summary>
         private readonly Dictionary<int, Texture2D> m_loaded = new Dictionary<int, Texture2D>();
+        /// <summary>When each of those was last on screen (seconds on m_clock); absent = never shown.</summary>
+        private readonly Dictionary<int, double> m_shownAt = new Dictionary<int, double>();
+        /// <summary>Waiting to be dropped, a few a frame.</summary>
+        private readonly Queue<Texture2D> m_queue = new Queue<Texture2D>();
+        private readonly Stopwatch m_clock = Stopwatch.StartNew();
+        private long m_queueCommit;
+        private int m_queueDropped;
+        private string m_queueWhy = "";
         private readonly Stopwatch m_sinceScan = new Stopwatch();
         private readonly Stopwatch m_sinceLook = new Stopwatch();
         private ItemsLoadedWatch m_items;
@@ -72,6 +80,11 @@ namespace FastLoad
         {
             try
             {
+                if (m_queue.Count > 0)
+                {
+                    Drain();
+                    return;
+                }
                 bool itemsNow = m_items.Seen && !m_itemsDone;
                 double scanEvery = m_itemsDone ? ScanLaterSeconds : ScanWhileLoadingSeconds;
                 if (itemsNow || m_sceneCame || m_sinceScan.Elapsed.TotalSeconds >= scanEvery)
@@ -207,29 +220,51 @@ namespace FastLoad
         private string Sweep(Dictionary<int, bool> shown, string why, int fresh, double scanMs)
         {
             if (m_loaded.Count == 0) return "nothing to drop";
-            long before = Memory.Commit();
-            Stopwatch sw = Stopwatch.StartNew();
-            int dropped = 0;
+            double now = m_clock.Elapsed.TotalSeconds;
             List<int> gone = new List<int>();
             foreach (KeyValuePair<int, Texture2D> pair in m_loaded)
             {
-                if (shown.ContainsKey(pair.Key)) continue;
+                if (shown.ContainsKey(pair.Key))
+                {
+                    m_shownAt[pair.Key] = now;
+                    continue;
+                }
+                double at;
+                if (m_shownAt.TryGetValue(pair.Key, out at))
+                {
+                    // Was on screen: stays until it has been off screen long enough, or for good with unloading off.
+                    if (!Unloading.Enabled || now - at < Unloading.IdleSeconds) continue;
+                    m_shownAt.Remove(pair.Key);
+                }
                 gone.Add(pair.Key);
                 // Equal to null = dropped already (or destroyed); nothing to do.
-                if (pair.Value == null) continue;
-                Resources.UnloadAsset(pair.Value);
-                dropped++;
+                if (pair.Value != null) m_queue.Enqueue(pair.Value);
             }
             for (int i = 0; i < gone.Count; i++) m_loaded.Remove(gone[i]);
-            if (dropped == 0) return "nothing to drop";
-            m_dropped += dropped;
-            long freed = before - Memory.Commit();
-            string text = "dropped " + dropped + " item pictures (" + why + "): memory " + (freed >= 0 ? "-" : "+") + (Math.Abs(freed) / 1048576) + " MB in "
-                + (int)sw.Elapsed.TotalMilliseconds + " ms; new=" + fresh + " scan=" + (int)scanMs + "ms known=" + m_known.Count + " onScreen=" + shown.Count
-                + " madeAtRunTime=" + m_runtimeMade + " droppedSoFar=" + m_dropped;
-            Timeline.Write("ICO", text);
-            if (dropped >= 200 || why == "all items loaded") Log.LogInfo("Item icons on demand: " + text);
-            return text;
+            if (m_queue.Count == 0) return "nothing to drop";
+            m_queueCommit = Memory.Commit();
+            m_queueDropped = 0;
+            m_queueWhy = why + "; new=" + fresh + " scan=" + (int)scanMs + "ms known=" + m_known.Count + " onScreen=" + shown.Count + " madeAtRunTime=" + m_runtimeMade;
+            return "queued " + m_queue.Count + " item pictures to drop";
+        }
+
+        /// <summary>Drops what is queued, at most Unloading.FrameBudgetMs of it a frame.</summary>
+        private void Drain()
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            while (m_queue.Count > 0 && sw.Elapsed.TotalMilliseconds < Unloading.FrameBudgetMs)
+            {
+                Texture2D t = m_queue.Dequeue();
+                if (t == null) continue;
+                Resources.UnloadAsset(t);
+                m_queueDropped++;
+            }
+            if (m_queue.Count > 0) return;
+            m_dropped += m_queueDropped;
+            long freed = m_queueCommit - Memory.Commit();
+            // Probe file only: unloading is not something the player is told about.
+            Timeline.Write("ICO", "dropped " + m_queueDropped + " item pictures (" + m_queueWhy + "): memory " + (freed >= 0 ? "-" : "+") + (Math.Abs(freed) / 1048576)
+                + " MB; droppedSoFar=" + m_dropped);
         }
     }
 }

@@ -20,10 +20,9 @@ namespace FastLoad
     /// scene's name: a console line on every scene load, and BepInEx/FastLoad/scenes.txt.
     /// Works with the probe switched off.
     ///
-    /// The engine always loads the menu scene first. With When = Immediately the menu is never shown: the moment
-    /// it exists (before its first frame) the headset goes to the loading screen and, for one of the game's own
-    /// scenes, that scene starts loading on Unity's loading thread, ahead of everything the mods queue up in the
-    /// first frame. A modded map has to wait for its loader to register it; the menu stays hidden meanwhile.
+    /// You start in the main menu as always. A second later the loading window says "Loading map X" and the scene
+    /// changes when it is in; nothing is blacked out. (An earlier version hid the menu and went straight to the
+    /// scene; Ken asked for this instead on 2026-10-13. Early() below is that version's entry and is not called.)
     /// </summary>
     public sealed class StartScene : MonoBehaviour
     {
@@ -53,8 +52,10 @@ namespace FastLoad
         private bool m_saidLooking;
         private bool m_jumped;
         private readonly Stopwatch m_sinceJump = new Stopwatch();
-        /// <summary>True while a scene asked for by Early is on its way.</summary>
+        /// <summary>True while a scene loaded directly (not through the game's loader) is on its way.</summary>
         private bool m_direct;
+        /// <summary>Loading-window entry for the map on its way.</summary>
+        private int m_feed;
 
         /// <summary>True from the game's start until the [Start] Scene has loaded, or it is clear that there is no jump.</summary>
         public static bool Busy;
@@ -79,8 +80,8 @@ namespace FastLoad
                 m_watch = new ItemsLoadedWatch();
                 BepInEx.Logging.Logger.Listeners.Add(m_watch);
             }
-            Log.LogInfo("Start scene: will go to '" + Wanted.Trim() + "' "
-                + (When == StartWhen.Immediately ? "without showing the main menu" : "from the main menu, after all items are loaded"));
+            Log.LogInfo("Start scene: will go to '" + Wanted.Trim() + "' from the main menu "
+                + (When == StartWhen.Immediately ? "right away" : "after all items are loaded"));
         }
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
@@ -106,7 +107,6 @@ namespace FastLoad
                 if (scene.name.StartsWith("MainMenu", StringComparison.Ordinal))
                 {
                     m_sinceMenu.Start();
-                    if (When == StartWhen.Immediately) Early();
                 }
                 else
                 {
@@ -132,7 +132,12 @@ namespace FastLoad
                     WriteListIfChanged();
                 }
                 // A jump that never arrives must not keep others waiting.
-                if (Busy && m_jumped && m_sinceJump.Elapsed.TotalSeconds > 120.0) Busy = false;
+                if (Busy && m_jumped && m_sinceJump.Elapsed.TotalSeconds > 120.0)
+                {
+                    Busy = false;
+                    FastLoad.Early.LoadFeed.End(m_feed, FastLoad.Early.Clock.NowMs);
+                    m_feed = 0;
+                }
                 if (Curtain.Closed) CurtainWatch();
                 if (m_done || !m_sinceMenu.IsRunning) return;
                 Step(m_sinceMenu.Elapsed.TotalSeconds);
@@ -175,9 +180,20 @@ namespace FastLoad
                     return;
                 }
                 Log.LogInfo("Start scene: going to '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
-                // The same call the menu's own Load button makes.
+                // Loaded directly, not through the game's loader: that one blacks the headset out and loads at the
+                // slowest setting. You stand in the menu, the loading window says where to, and the scene changes.
+                ThreadPriority before = Application.backgroundLoadingPriority;
+                Application.backgroundLoadingPriority = ThreadPriority.High;
+                AsyncOperation op = SceneManager.LoadSceneAsync(pick.Value, LoadSceneMode.Single);
+                if (op == null)
+                {
+                    Application.backgroundLoadingPriority = before;
+                    Log.LogWarning("Start scene: Unity would not load '" + pick.Value + "'. Staying in the menu.");
+                    return;
+                }
                 Jumped();
-                SteamVR_LoadLevel.Begin(pick.Value, false, 0.5f, 0f, 0f, 0f, 1f);
+                m_direct = true;
+                m_feed = FastLoad.Early.LoadFeed.Begin("map " + pick.Value, "", false, false, FastLoad.Early.Clock.NowMs);
                 return;
             }
             if (pick.Kind == PickKind.Modded)
@@ -186,6 +202,7 @@ namespace FastLoad
                 string error;
                 bool asked = AtlasBridge.Load(pick.Value, out error);
                 if (asked) Jumped();
+                if (asked) m_feed = FastLoad.Early.LoadFeed.Begin("map " + pick.Value, "", false, false, FastLoad.Early.Clock.NowMs);
                 if (asked)
                     Log.LogInfo("Start scene: asked Atlas to load '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
                 else
@@ -255,6 +272,8 @@ namespace FastLoad
         private void Arrived()
         {
             Busy = false;
+            FastLoad.Early.LoadFeed.End(m_feed, FastLoad.Early.Clock.NowMs);
+            m_feed = 0;
             if (m_direct)
             {
                 m_direct = false;

@@ -1,0 +1,13 @@
+wait items
+wait 10
+spawn ModulAR15
+wait 8
+check
+clear                            # gun gone: its textures should be dropped after [Unload] IdleSeconds
+wait 50
+spawn ModulAR15                  # again: read back in
+wait 5
+check
+clear
+wait 3
+quit

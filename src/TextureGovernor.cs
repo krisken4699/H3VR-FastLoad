@@ -9,41 +9,56 @@ using UnityEngine.UI;
 
 namespace FastLoad
 {
+    /// <summary>"[Unload]" settings, shared by the governors.</summary>
+    public static class Unloading
+    {
+        /// <summary>False: what was in use once stays in memory. Things that were loaded and never used are still dropped.</summary>
+        public static bool Enabled = true;
+        /// <summary>How long something has to be out of the scene before it is dropped.</summary>
+        public static double IdleSeconds = 120.0;
+        /// <summary>Main-thread time a frame the governors may spend dropping or looking, milliseconds.</summary>
+        public const double FrameBudgetMs = 1.5;
+    }
+
     /// <summary>
-    /// "[OnDemand] Textures": mod loaders read whole asset bundles to get at a few things in them. Spawning one
-    /// modular rifle made ModulWorkshop_Optimizer load 52 part bundles in full: 8600 textures, +31 GB, for the
-    /// handful of parts on the gun. The textures of everything not in the scene are dropped here again
-    /// (Resources.UnloadAsset); Unity reads a dropped texture back from its still-open bundle by itself when
-    /// something draws it.
+    /// "[OnDemand] Textures" and "[Unload]": textures nothing in the scene uses are dropped (Resources.UnloadAsset);
+    /// Unity reads a dropped texture back from its still-open mod file by itself when something draws it.
     ///
-    /// What is left alone:
-    ///  - textures that were there before the first scan, or that came in within SceneGraceSeconds of a scene load
-    ///    (the scene's own);
-    ///  - textures made at run time (negative instance id): nothing on disk to come back from;
-    ///  - textures a renderer or UI element in the scene uses, as far as the usual material slots show;
-    ///  - "hot" textures: dropped, and back in memory within HotSeconds, so something does use them;
-    ///  - textures that were dropped MaxDrops times already, or that Unity would not drop (their bundle is closed).
-    /// A wrong guess costs one re-read of that texture, never a missing texture.
+    /// Two cases:
+    ///  - loaded and never used (a loader read a whole mod file for one thing in it): dropped a few seconds after
+    ///    it came in. Spawning one modular rifle brought in 8600 such textures, +31 GB.
+    ///  - used, then gone from the scene (a gun that was spawned and deleted): dropped after [Unload] IdleSeconds,
+    ///    when [Unload] Enabled.
+    ///
+    /// Left alone: what was there at the first look (the game's own), a map's own textures while that map is
+    /// loaded, textures made at run time (negative instance id: nothing on disk to come back from), textures that
+    /// came straight back after a drop (something uses them in a way this cannot see), and textures Unity would
+    /// not drop. A wrong guess costs one re-read of that texture, never a missing texture.
+    ///
+    /// Never more than Unloading.FrameBudgetMs of work in a frame: looking through the scene and dropping are
+    /// both spread over as many frames as they take.
     /// </summary>
     public sealed class TextureGovernor : MonoBehaviour
     {
         public ManualLogSource Log;
 
-        private const double ScanSeconds = 2.0;
-        /// <summary>A texture has to be seen loaded this long before it can be dropped: what is being spawned gets time to appear.</summary>
+        private const double BusyScanSeconds = 2.0;
+        private const double QuietScanSeconds = 10.0;
+        /// <summary>Never-used textures wait this long: what is being spawned gets time to appear.</summary>
         private const double GraceSeconds = 4.0;
         private const double SceneGraceSeconds = 15.0;
         private const double HotSeconds = 20.0;
         private const int MaxDrops = 3;
-        /// <summary>Drops in one frame; more wait for the next scan.</summary>
-        private const int DropsAFrame = 1500;
+
+        private enum Hold { None, Game, Scene, Hot, Fixed }
 
         private sealed class Seen
         {
             public double First;
+            public double LastUsed = -1;
             public double DroppedAt = -1;
             public int Drops;
-            public bool Keep;
+            public Hold Hold;
         }
 
         private static readonly string[] Slots = new string[] { "_MainTex", "_BumpMap", "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap", "_EmissionMap",
@@ -55,10 +70,24 @@ namespace FastLoad
         private readonly Stopwatch m_clock = Stopwatch.StartNew();
         private readonly Stopwatch m_sinceScan = Stopwatch.StartNew();
         private double m_lastSceneAt = -1000;
+        private double m_lastLoadAt = -1000;
         private bool m_first = true;
-        private long m_dropped;
-        private long m_hot;
-        private long m_refused;
+        private bool m_sceneChanged;
+
+        // One pass, spread over frames: list -> walk the scene -> drop.
+        private enum Phase { Idle, Walk, Drop }
+        private Phase m_phase = Phase.Idle;
+        private List<Texture2D> m_ripe;
+        private Renderer[] m_renderers;
+        private Graphic[] m_graphics;
+        private int m_walkAt;
+        private int m_dropAt;
+        private Dictionary<int, bool> m_used;
+        private Dictionary<int, bool> m_doneMaterials;
+        private int m_passDropped, m_passInScene, m_passRefused, m_passFrames;
+        private long m_passCommit;
+        private double m_passWorstMs;
+        private long m_dropped, m_hot, m_refused;
 
         private void Awake()
         {
@@ -69,17 +98,35 @@ namespace FastLoad
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            if (mode != LoadSceneMode.Additive) m_lastSceneAt = m_clock.Elapsed.TotalSeconds;
+            if (mode == LoadSceneMode.Additive) return;
+            m_lastSceneAt = m_clock.Elapsed.TotalSeconds;
+            m_sceneChanged = true;
         }
 
         private void Update()
         {
-            if (m_sinceScan.Elapsed.TotalSeconds < ScanSeconds) return;
-            m_sinceScan.Reset();
-            m_sinceScan.Start();
             try
             {
-                Scan();
+                double now = m_clock.Elapsed.TotalSeconds;
+                string ignored;
+                if (LoadFeed.Line(Clock.NowMs, 0, out ignored)) m_lastLoadAt = now;
+                // No scene yet, or one on its way: nothing is settled.
+                if (m_lastSceneAt < 0 || StartScene.Busy || SteamVR_LoadLevel.loading) return;
+
+                Stopwatch sw = Stopwatch.StartNew();
+                if (m_phase == Phase.Idle)
+                {
+                    double every = now - m_lastLoadAt < 12.0 ? BusyScanSeconds : QuietScanSeconds;
+                    if (m_sinceScan.Elapsed.TotalSeconds < every) return;
+                    m_sinceScan.Reset();
+                    m_sinceScan.Start();
+                    List(now);
+                }
+                else if (m_phase == Phase.Walk) Walk(sw);
+                else Drop(sw, now);
+                double ms = sw.Elapsed.TotalMilliseconds;
+                if (ms > m_passWorstMs) m_passWorstMs = ms;
+                m_passFrames++;
             }
             catch (Exception e)
             {
@@ -88,15 +135,22 @@ namespace FastLoad
             }
         }
 
-        private void Scan()
+        /// <summary>What is loaded now (this lists, it does not load), and which of it is due.</summary>
+        private void List(double now)
         {
-            // No scene yet, or one on its way: nothing is settled.
-            if (m_lastSceneAt < 0 || StartScene.Busy || SteamVR_LoadLevel.loading) return;
-            double now = m_clock.Elapsed.TotalSeconds;
             bool sceneFresh = now - m_lastSceneAt < SceneGraceSeconds;
-            Stopwatch sw = Stopwatch.StartNew();
-
-            // Lists what is loaded; does not load anything.
+            if (m_sceneChanged)
+            {
+                // The last map's own textures and the "something uses it" guesses start over.
+                m_sceneChanged = false;
+                foreach (Seen s in m_seen.Values)
+                {
+                    if (s.Hold != Hold.Scene && s.Hold != Hold.Hot) continue;
+                    s.Hold = Hold.None;
+                    s.LastUsed = now;
+                    s.DroppedAt = -1;
+                }
+            }
             UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(typeof(Texture2D));
             List<Texture2D> ripe = null;
             for (int i = 0; i < all.Length; i++)
@@ -110,114 +164,147 @@ namespace FastLoad
                 {
                     s = new Seen();
                     s.First = now;
-                    s.Keep = m_first || sceneFresh;
+                    s.Hold = m_first ? Hold.Game : sceneFresh ? Hold.Scene : Hold.None;
                     m_seen[id] = s;
                     continue;
                 }
-                if (s.Keep) continue;
+                if (s.Hold != Hold.None) continue;
                 if (s.DroppedAt >= 0)
                 {
                     // It is back.
                     if (now - s.DroppedAt < HotSeconds || s.Drops >= MaxDrops)
                     {
-                        s.Keep = true;
+                        s.Hold = s.Drops >= MaxDrops ? Hold.Fixed : Hold.Hot;
                         m_hot++;
                         continue;
                     }
                     s.DroppedAt = -1;
                     s.First = now;
+                    s.LastUsed = -1;
                     continue;
                 }
-                if (now - s.First < GraceSeconds) continue;
+                bool due = s.LastUsed < 0 ? now - s.First >= GraceSeconds : Unloading.Enabled && now - s.LastUsed >= Unloading.IdleSeconds;
+                if (!due) continue;
                 if (ripe == null) ripe = new List<Texture2D>();
                 ripe.Add(t);
             }
             m_first = false;
+            m_passFrames = 0;
+            m_passWorstMs = 0;
             if (ripe == null) return;
 
-            double listMs = sw.Elapsed.TotalMilliseconds;
-            Dictionary<int, bool> used = InUse();
-            double useMs = sw.Elapsed.TotalMilliseconds - listMs;
-            long before = Memory.Commit();
-            int dropped = 0;
-            int kept = 0;
-            int refused = 0;
-            for (int i = 0; i < ripe.Count && dropped < DropsAFrame; i++)
+            m_ripe = ripe;
+            // Everything in the scene, switched on or not: a muzzle flash that is off now must not hitch when it fires.
+            m_renderers = Resources.FindObjectsOfTypeAll(typeof(Renderer)) as Renderer[];
+            if (m_renderers == null)
             {
-                Texture2D t = ripe[i];
-                int id = t.GetInstanceID();
-                Seen s = m_seen[id];
-                if (used.ContainsKey(id))
-                {
-                    // In the scene now. Looked at again later, when it may be gone from it.
-                    s.First = now;
-                    kept++;
-                    continue;
-                }
-                Resources.UnloadAsset(t);
-                if (t != null)
-                {
-                    // Still there: Unity has no file to read it back from (its bundle was closed), so it stays for good.
-                    s.Keep = true;
-                    refused++;
-                    continue;
-                }
-                s.DroppedAt = now;
-                s.Drops++;
-                dropped++;
+                UnityEngine.Object[] raw = Resources.FindObjectsOfTypeAll(typeof(Renderer));
+                m_renderers = new Renderer[raw.Length];
+                for (int i = 0; i < raw.Length; i++) m_renderers[i] = raw[i] as Renderer;
             }
-            m_dropped += dropped;
-            m_refused += refused;
-            if (dropped == 0 && refused == 0) return;
-            long freed = before - Memory.Commit();
-            string text = "dropped " + dropped + " textures nothing in the scene uses: memory " + (freed >= 0 ? "-" : "+") + (Math.Abs(freed) / 1048576) + " MB; ripe=" + ripe.Count
-                + " inScene=" + kept + " notDroppable=" + refused + " loaded=" + all.Length + " list=" + (int)listMs + "ms use=" + (int)useMs + "ms total="
-                + (int)sw.Elapsed.TotalMilliseconds + "ms | so far dropped=" + m_dropped + " cameBackAndKept=" + m_hot + " notDroppable=" + m_refused;
-            Timeline.Write("TEX", text);
-            if (dropped >= 300) Log.LogInfo("Textures on demand: " + text);
+            m_graphics = FindObjectsOfType<Graphic>();
+            m_used = new Dictionary<int, bool>();
+            m_doneMaterials = new Dictionary<int, bool>();
+            m_walkAt = 0;
+            m_dropAt = 0;
+            m_passDropped = 0;
+            m_passInScene = 0;
+            m_passRefused = 0;
+            m_passCommit = Memory.Commit();
+            m_phase = Phase.Walk;
         }
 
-        /// <summary>Instance ids of the textures the scene's renderers and UI show, as far as the usual material slots tell.</summary>
-        private Dictionary<int, bool> InUse()
+        private void Walk(Stopwatch sw)
         {
-            Dictionary<int, bool> used = new Dictionary<int, bool>();
-            Dictionary<int, bool> doneMaterials = new Dictionary<int, bool>();
-            Renderer[] renderers = FindObjectsOfType<Renderer>();
-            for (int i = 0; i < renderers.Length; i++)
+            int total = m_renderers.Length + m_graphics.Length;
+            while (m_walkAt < total)
             {
-                Material[] mats = renderers[i].sharedMaterials;
-                for (int m = 0; m < mats.Length; m++) Take(mats[m], used, doneMaterials);
-            }
-            Graphic[] graphics = FindObjectsOfType<Graphic>();
-            for (int i = 0; i < graphics.Length; i++)
-            {
-                Texture t = graphics[i].mainTexture;
-                if (!ReferenceEquals(t, null) && t != null) used[t.GetInstanceID()] = true;
-                Take(graphics[i].material, used, doneMaterials);
+                if ((m_walkAt & 15) == 0 && sw.Elapsed.TotalMilliseconds >= Unloading.FrameBudgetMs) return;
+                int i = m_walkAt++;
+                if (i < m_renderers.Length)
+                {
+                    Renderer r = m_renderers[i];
+                    // Gone since the list was made, or a prefab that is not in any scene.
+                    if (ReferenceEquals(r, null) || r == null || !r.gameObject.scene.IsValid()) continue;
+                    Material[] mats = r.sharedMaterials;
+                    for (int m = 0; m < mats.Length; m++) Take(mats[m]);
+                }
+                else
+                {
+                    Graphic g = m_graphics[i - m_renderers.Length];
+                    if (ReferenceEquals(g, null) || g == null) continue;
+                    Texture t = g.mainTexture;
+                    if (!ReferenceEquals(t, null) && t != null) m_used[t.GetInstanceID()] = true;
+                    Take(g.material);
+                }
             }
             LightmapData[] maps = LightmapSettings.lightmaps;
             for (int i = 0; maps != null && i < maps.Length; i++)
             {
                 if (maps[i] == null) continue;
-                if (maps[i].lightmapColor != null) used[maps[i].lightmapColor.GetInstanceID()] = true;
-                if (maps[i].lightmapDir != null) used[maps[i].lightmapDir.GetInstanceID()] = true;
+                if (maps[i].lightmapColor != null) m_used[maps[i].lightmapColor.GetInstanceID()] = true;
+                if (maps[i].lightmapDir != null) m_used[maps[i].lightmapDir.GetInstanceID()] = true;
             }
-            Take(RenderSettings.skybox, used, doneMaterials);
-            return used;
+            Take(RenderSettings.skybox);
+            m_renderers = null;
+            m_graphics = null;
+            m_doneMaterials = null;
+            m_phase = Phase.Drop;
         }
 
-        private void Take(Material mat, Dictionary<int, bool> used, Dictionary<int, bool> doneMaterials)
+        private void Take(Material mat)
         {
             if (ReferenceEquals(mat, null) || mat == null) return;
             int mid = mat.GetInstanceID();
-            if (doneMaterials.ContainsKey(mid)) return;
-            doneMaterials[mid] = true;
+            if (m_doneMaterials.ContainsKey(mid)) return;
+            m_doneMaterials[mid] = true;
             for (int i = 0; i < m_slotIds.Length; i++)
             {
                 if (!mat.HasProperty(m_slotIds[i])) continue;
                 Texture t = mat.GetTexture(m_slotIds[i]);
-                if (!ReferenceEquals(t, null) && t != null) used[t.GetInstanceID()] = true;
+                if (!ReferenceEquals(t, null) && t != null) m_used[t.GetInstanceID()] = true;
             }
+        }
+
+        private void Drop(Stopwatch sw, double now)
+        {
+            while (m_dropAt < m_ripe.Count)
+            {
+                if (sw.Elapsed.TotalMilliseconds >= Unloading.FrameBudgetMs) return;
+                Texture2D t = m_ripe[m_dropAt++];
+                // Dropped or destroyed by someone else in the meantime.
+                if (t == null) continue;
+                int id = t.GetInstanceID();
+                Seen s = m_seen[id];
+                if (m_used.ContainsKey(id))
+                {
+                    s.LastUsed = now;
+                    m_passInScene++;
+                    continue;
+                }
+                Resources.UnloadAsset(t);
+                if (t != null)
+                {
+                    // Still there: Unity has no file to read it back from (its bundle was closed), so it stays.
+                    s.Hold = Hold.Fixed;
+                    m_passRefused++;
+                    continue;
+                }
+                s.DroppedAt = now;
+                s.Drops++;
+                m_passDropped++;
+            }
+            m_phase = Phase.Idle;
+            m_ripe = null;
+            m_used = null;
+            m_dropped += m_passDropped;
+            m_refused += m_passRefused;
+            if (m_passDropped == 0 && m_passRefused == 0) return;
+            long freed = m_passCommit - Memory.Commit();
+            // Probe file only: unloading is not something the player is told about.
+            Timeline.Write("TEX", "dropped " + m_passDropped + " textures nothing in the scene uses: memory " + (freed >= 0 ? "-" : "+") + (Math.Abs(freed) / 1048576)
+                + " MB over " + m_passFrames + " frames, most in one frame " + m_passWorstMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms; inScene="
+                + m_passInScene + " notDroppable=" + m_passRefused + " | so far dropped=" + m_dropped + " cameBackAndKept=" + m_hot + " notDroppable=" + m_refused);
         }
     }
 }
