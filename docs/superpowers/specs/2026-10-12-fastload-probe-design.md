@@ -74,25 +74,36 @@ Every timeline line starts with `ms since process start` (from `Process.StartTim
 
 ### 2. Bundle hooks
 
-Harmony patches on `UnityEngine.AssetBundle`:
+Harmony patches on `UnityEngine.AssetBundle` (Unity 5.6.7 has no `LoadFromStream`). The hook code lives in the
+patcher assembly and is installed the moment the log mirror sees BepInEx's "Chainloader started" line, which is
+before any plugin's code runs; the plugin's `Awake` calls the same install again as a safety net (it does nothing
+the second time).
 
-- `LoadFromFile`, `LoadFromFileAsync`, `LoadFromMemory`, `LoadFromMemoryAsync`, `LoadFromStream`,
-  `LoadFromStreamAsync` (all overloads present in Unity 5.6.7)
-- `LoadAsset`, `LoadAssetAsync`, `LoadAllAssets`, `LoadAllAssetsAsync`, `LoadAssetWithSubAssets(Async)`
-- `Unload`
+- Bundle loads, managed wrappers (default): `LoadFromFile(string)`, `LoadFromFile(string, uint)`,
+  `LoadFromFileAsync(string)`, `LoadFromFileAsync(string, uint)`, `LoadFromMemory(byte[])`,
+  `LoadFromMemoryAsync(byte[])`.
+- Bundle loads, engine-native methods (only with `Probe.NativeHooks = true`): `LoadFromFile(string, uint, ulong)`,
+  `LoadFromFileAsync(string, uint, ulong)`, `LoadFromMemory(byte[], uint)`, `LoadFromMemoryAsync(byte[], uint)`.
+  Off by default: the game already has unexplained `0xc0000374` crashes, and native detours are not added to it
+  without need. A mod that calls the three-argument form directly is missed in the default mode.
+- Asset use: `LoadAsset(string, Type)`, `LoadAssetAsync(string, Type)`, `LoadAssetWithSubAssets(string, Type)`,
+  `LoadAssetWithSubAssetsAsync(string, Type)`, `LoadAllAssets(Type)`, `LoadAllAssetsAsync(Type)`. Every other
+  public overload goes through one of these.
+- `Unload` exists only as an engine-native method, so it is not hooked. Once per second the probe checks each
+  bundle it knows; one that Unity reports as destroyed is marked unloaded (precision about 1 s).
 
-For each bundle the probe records: file path and size (when loaded from a file), who asked for it (first
-non-Unity, non-FastLoad assembly on the call stack, read once per load call), load start and end, wall time,
-main-thread time spent inside the call, process commit before and after, number of `LoadAsset` calls, time of
-last use, unload time. Async loads end when the request's `isDone` turns true, polled by the sampler each frame.
+For each bundle the probe records: file path and size (when loaded from a file), the mod it belongs to (folder
+name under `BepInEx/plugins/`), who asked for it (first assembly on the call stack that is not Unity, Harmony,
+MonoMod, mscorlib or FastLoad, read once per load call), load start and end, wall time, main-thread time spent
+inside the call, process commit before and after, number of asset calls, time of last use, unload time. Async
+loads end when the request's `isDone` turns true, checked on every hook call and by the sampler each frame.
 
 Lines written: `BUN load-start`, `BUN load-end`, `BUN asset` (only when a single asset call blocks the main
-thread for 5 ms or more), `BUN unload`.
+thread for 5 ms or more), `BUN unload`, and one `HKS` line saying which mode is on and how many hooks applied.
 
-Fallback, decided during the build and reported to Ken, never silently: if HarmonyX 2.5.5 cannot patch these
-engine methods, use the events of `XUnity.ResourceRedirector` already in `BepInEx/core`; if that cannot be used
-either, bundle data comes from loader log lines only (OtherLoaderPatched "Completed loading bundle", ModulWorkshop
-Optimizer "On-demand async loading modular bundle") and the report says which fields are missing.
+Cross-check, always printed in the report: the number of bundles the hooks saw next to the number the loaders
+reported in their own log lines (OtherLoaderPatched "Completed loading bundle", ModulWorkshop Optimizer "On-demand
+async loading modular bundle"). A large gap means loads are being missed and is reported to Ken, never hidden.
 
 ### 3. Sampler
 
@@ -122,8 +133,10 @@ One `MonoBehaviour` on a `DontDestroyOnLoad` object, created in the plugin's `Aw
    for two windows: menu scene loaded until quiet, and the 30 s after quiet.
 4. **Bundles**: top 40 by wall time, top 40 by main-thread time, top 40 by commit growth; each with path, size,
    owner plugin.
-5. **Plugins**: per owning assembly, bundle count, total size, total main-thread time, total commit growth.
-6. **Loaded, never used**: bundles with zero `LoadAsset` calls by the end of the run, with size.
+5. **Mods**: per mod folder, bundle count, total size, total main-thread time, total commit growth; and the same
+   totals per loader assembly that asked for the bundles.
+6. **Loaded, never used**: bundles with zero asset calls by the end of the run, with size. Scene bundles (maps)
+   show here too, because scenes are not loaded through asset calls; the report says so.
 7. **Memory**: commit and working set at each phase mark, peak commit with its time, lowest system commit free
    with its time.
 8. **Spawn bursts**: after quiet, every group of bundle loads that starts within 2 s of each other is listed as
@@ -142,6 +155,7 @@ printed as "not seen", never guessed.
 | `Probe.Enabled` | `true` | Turns the whole probe off: no hooks, no sampler, no files |
 | `Probe.HitchMs` | `25` | A frame this long or longer is written as `HIT`. Example: `25` catches anything under 40 fps |
 | `Probe.KeepRuns` | `6` | How many runs to keep. Example: `6` |
+| `Probe.NativeHooks` | `false` | Also hook the engine-native bundle load methods. Example: `true` when the report's cross-check shows missed loads |
 
 Examples sit in the config descriptions, as above. The patcher reads `Probe.Enabled` straight from the cfg file,
 because BepInEx config objects are not available in the preloader.
@@ -167,7 +181,7 @@ Build checks, by me:
 
 - `dotnet build` of both projects clean; runtime check passes.
 - Unit tests (plain .NET test project, no Unity) for the parts with logic: timeline line format, phase matcher
-  on a copy of the 2026-10-09 `LogOutput.log`, burst grouping, never-used list, run pruning.
+  on lines copied from the 2026-10-09 `LogOutput.log`, burst grouping, never-used list, run pruning.
 
 In game, by Ken, once:
 
