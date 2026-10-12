@@ -42,6 +42,11 @@ namespace FastLoad
         private int m_listedMaps = -1;
         private bool m_saidWaiting;
         private bool m_saidLooking;
+        private bool m_jumped;
+        private readonly Stopwatch m_sinceJump = new Stopwatch();
+
+        /// <summary>True from the game's start until the [Start] Scene has loaded, or it is clear that there is no jump.</summary>
+        public static bool Busy;
 
         private void Awake()
         {
@@ -57,6 +62,7 @@ namespace FastLoad
                 m_done = true;
                 return;
             }
+            Busy = true;
             if (When == StartWhen.AfterItemsLoaded)
             {
                 m_watch = new ItemsLoadedWatch();
@@ -78,7 +84,12 @@ namespace FastLoad
                 string paste = isGame || id.Length == 0 ? scene.name : id;
                 Log.LogInfo("Scene loaded: " + scene.name + "   (to start the game here: [Start] Scene = " + paste + ")");
 
-                if (m_firstSceneSeen) return;
+                if (m_firstSceneSeen)
+                {
+                    // The scene the jump asked for (or whatever came instead) is here.
+                    if (m_jumped) Busy = false;
+                    return;
+                }
                 m_firstSceneSeen = true;
                 if (m_done) return;
                 if (scene.name.StartsWith("MainMenu", StringComparison.Ordinal))
@@ -108,6 +119,8 @@ namespace FastLoad
                     m_sinceList.Start();
                     WriteListIfChanged();
                 }
+                // A jump that never arrives must not keep others waiting.
+                if (Busy && m_jumped && m_sinceJump.Elapsed.TotalSeconds > 120.0) Busy = false;
                 if (m_done || !m_sinceMenu.IsRunning) return;
                 Step(m_sinceMenu.Elapsed.TotalSeconds);
             }
@@ -150,6 +163,7 @@ namespace FastLoad
                 }
                 Log.LogInfo("Start scene: going to '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
                 // The same call the menu's own Load button makes.
+                Jumped();
                 SteamVR_LoadLevel.Begin(pick.Value, false, 0.5f, 0f, 0f, 0f, 1f);
                 return;
             }
@@ -157,7 +171,9 @@ namespace FastLoad
             {
                 Finish();
                 string error;
-                if (AtlasBridge.Load(pick.Value, out error))
+                bool asked = AtlasBridge.Load(pick.Value, out error);
+                if (asked) Jumped();
+                if (asked)
                     Log.LogInfo("Start scene: asked Atlas to load '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
                 else
                     Log.LogWarning("Start scene: could not load modded map '" + pick.Value + "': " + error + ". Staying in the menu.");
@@ -188,9 +204,18 @@ namespace FastLoad
                 + ListPath() + (AtlasBridge.Found ? "" : " (Atlas, which loads modded maps, is not installed)"));
         }
 
+        private void Jumped()
+        {
+            m_jumped = true;
+            Busy = true;
+            m_sinceJump.Start();
+        }
+
         private void Finish()
         {
             m_done = true;
+            // Set again by Jumped when this Finish is the one before a jump.
+            Busy = false;
             m_sinceMenu.Stop();
             if (m_watch != null)
             {
@@ -243,29 +268,6 @@ namespace FastLoad
             catch (Exception e)
             {
                 Log.LogWarning("Could not write scenes.txt: " + e.GetType().Name + ": " + e.Message);
-            }
-        }
-
-        /// <summary>Hears OtherLoader say that every item is loaded.</summary>
-        private sealed class ItemsLoadedWatch : ILogListener
-        {
-            public volatile bool Seen;
-
-            public void LogEvent(object sender, LogEventArgs e)
-            {
-                try
-                {
-                    if (Seen || e.Source == null || e.Data == null) return;
-                    if (!e.Source.SourceName.StartsWith("OtherLoader", StringComparison.Ordinal)) return;
-                    if (e.Data.ToString().IndexOf("All items loaded", StringComparison.Ordinal) >= 0) Seen = true;
-                }
-                catch (Exception)
-                {
-                }
-            }
-
-            public void Dispose()
-            {
             }
         }
     }

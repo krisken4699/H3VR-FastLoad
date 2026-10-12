@@ -18,6 +18,7 @@ namespace FastLoad.Tests
             PluginLoadsTests.Run();
             StartPickTests.Run();
             DllIndexTests.Run();
+            LaterListTests.Run();
 
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed > 0 ? 1 : 0;

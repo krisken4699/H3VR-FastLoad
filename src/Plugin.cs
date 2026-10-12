@@ -33,6 +33,33 @@ namespace FastLoad
                 + "Example: FastDllLookup = false");
             Logger.LogInfo("Fast DLL lookup so far: " + DllLookup.Summary());
 
+            ConfigEntry<string> laterPlugins = Config.Bind("Later", "Plugins", "",
+                "Faster start: plugins to hold back until the game is on screen. BepInEx starts every plugin before the first frame, one after\n"
+                + "another; a few heavy ones can take most of that time. The plugins named here are started after you are in the map instead.\n"
+                + "Good candidates: things you do not need in the first minute (custom sosig looks, hats, voice packs).\n"
+                + "Bad candidates: loaders (OtherLoader, Sideloader, Deli, Stratum, Atlas), anything that patches the menu, anything other mods need.\n"
+                + "Name a plugin by its name or its GUID, exactly as in its 'Loading [Name 1.0.0]' log line; separate with commas. Capital letters do not matter.\n"
+                + "A plugin that needs a held one is held too. The game can stand still for as long as a held plugin takes to start.\n"
+                + "To find the slow ones: BepInEx/FastLoad/report_*.txt, section '9. Plugin loading'.\n"
+                + "Example: Plugins = Sosig Hat Realism, CustomSosigModelFramework\n"
+                + "Leave empty to start every plugin the normal way. Needs a game restart.");
+            ConfigEntry<LaterWhen> laterWhen = Config.Bind("Later", "When", LaterWhen.InTheMap,
+                "When the held plugins start.\n"
+                + "InTheMap: a few seconds after the first scene is on screen (after the [Start] Scene when one is set).\n"
+                + "AfterItemsLoaded: only after OtherLoader reports 'All items loaded', so they do not compete with item loading.\n"
+                + "Example: When = AfterItemsLoaded");
+            try
+            {
+                LaterLoader later = gameObject.AddComponent<LaterLoader>();
+                later.When = laterWhen.Value;
+                later.Log = Logger;
+                later.Begin();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Later plugins could not start: " + e.GetType().Name + ": " + e.Message);
+            }
+
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
@@ -99,7 +126,7 @@ namespace FastLoad
             try
             {
                 int now = Clock.NowMs;
-                Timeline.Write("SCN", "loaded " + scene.name + " mode=" + mode);
+                Timeline.Write("SCN", "loaded " + scene.name + " mode=" + mode + " backgroundLoadingPriority=" + UnityEngine.Application.backgroundLoadingPriority);
                 if (Phases.SeeScene(scene.name, now))
                 {
                     Timeline.Write("PHS", "menu scene at " + now);

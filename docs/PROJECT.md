@@ -78,3 +78,54 @@ first frame of the new scene. OtherLoader's 3 "Failed to load asset" errors are 
 Not tested: a Take & Hold map as start scene (it would skip the T&H lobby), how the map plays in the headset,
 `When = AfterItemsLoaded`.
 Unity reports the game's first scene with a load mode that is neither Single nor Additive (prints as 2).
+
+## Fast first load (2026-10-12 evening, Ken: "i want first load to be fast ... go right in and start playing while other things start loading")
+
+Ken's words: QOL mods and tweakers load fast; custom sosigs and T&H characters can load later while he is already in the
+indoor range. Built on branch `probe`, all three parts work with the probe switched off (not run that way yet).
+
+### 1. Fast DLL lookup (`[Speed] FastDllLookup`, default on)
+Cause found with the probe: when the runtime asks for an assembly that is not loaded, BepInEx (`Utility.TryResolveDllAssembly`)
+walks every folder under `core`, `patchers` and `plugins` again, per question. new2 has 1710 plugin folders: about 285 ms per
+question. About 140 questions were asked while plugins loaded (421 folder searches, 5 distinct names: Stratum, UnityEditor,
+ProBuilderCore-Unity5, H3VRCode-CSharp, BepInEx.BepIn4Patcher), triggered by Harmony's all-assembly type scans
+(`PatchAll`, `AccessTools.TypeByName`) hitting assemblies with missing references. The first plugin to scan paid for it,
+which is why AmbientMuter (15.8 s), Player Pain Sounds (11.3 s) and Ciarences (7.9 s) looked slow.
+Fix: `patcher/DllLookup.cs` answers both public overloads from `DllIndex` (folders read once, 346 ms, same try order).
+Measured: plugin loading 89.6 s -> 47.2 s. AmbientMuter 0.7 s, Player Pain Sounds 0.4 s, Ciarences 2.1 s.
+Timeline kinds added: `RES` (index built, each missing name once with who asked, totals at each phase mark),
+`SLO` (a Harmony type scan that took 100 ms or more).
+
+### 2. Later plugins (`[Later] Plugins`, `[Later] When`)
+Plugins named in the config are not started in BepInEx's round (prefix on `GameObject.AddComponent(Type)` returns nothing
+for them); `src/LaterLoader.cs` starts them one at a time 3 s after the first scene, or after the `[Start] Scene` when set.
+A plugin that depends on a held one is held too. StratumPlugin / DeliBehaviour types are never held.
+Measured on new2 with `Plugins = Sosig Hat Realism, CustomSosigModelFramework`:
+- CustomSosigModelFramework: 8.9 s and +4151 MB, now paid in the map instead of before the first frame.
+- Sosig Hat Realism: only 1.8 s / +131 MB when started late. The 13 s in its turn was game data that the first plugin to
+  touch it loads; with the plugin held, those seconds showed up between "plugins loaded" and the menu scene (1.7 s -> 12 s).
+  So it is no longer in new2's list.
+Not tested in game: a held plugin with dependents, the StratumPlugin guard, `When = AfterItemsLoaded`.
+
+### 3. Result on new2 (start scene `IndoorRange_Updated`, later = both plugins above)
+| mark | before | after |
+|---|---|---|
+| all plugins loaded | 126.1 s | 55.4 s |
+| menu scene | 127.8 s (121.0 s in the jump run) | 67.4 s |
+| in the indoor range | 138.6 s | 88.8 s |
+Same error lines as the earlier jump runs; nothing new from the two speed-ups.
+What is left before the range: preloader 19 s (MonoMod patching about 11 s of it), engine start 11 s, plugins 25 s
+(700 small ones), game's own start 12 s, one long frame of about 7.7 s right after the menu loads (Stratum's runtime stage
+starting), range load 13.6 s.
+
+### Not answered yet
+- Smoothness in the map while items load. The evening runs drew about 5 frames a second from start to end (median 186-201 ms),
+  with and without the changes; the afternoon runs had 16-18 ms. Cause not traced (nobody was wearing the headset). Frame
+  numbers and "items loaded" times from the evening runs cannot be compared with the afternoon ones.
+- The game sets `Application.backgroundLoadingPriority` to High in the menu and Low in the indoor range.
+- Where 19 GB goes while items load: not unpacked bundles. Of 756 bundle files, 697 are LZ4HC (read from disk in chunks),
+  43 LZMA (1.4 GB unpacked). OtherLoader runs 13 `LoadAllAssetsAsync<T>` per bundle and keeps 730 of 758 bundles open
+  (29 unloads seen). Needs a count of what is in memory (textures, meshes, audio) at the marks: next probe addition.
+- Freezes when OtherLoader finishes (9.5 s and 4 s): log lines in those frames come from ModulWorkshop_Optimizer,
+  MagazinePatcher, PrefabReplacer, Custom Sosig Loader. Cause not traced.
+- CustomSosigModelFramework loads its model (4 GB) although `ActiveModel = Sosig` (the model is not shown).

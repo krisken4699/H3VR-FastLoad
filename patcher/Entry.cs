@@ -39,6 +39,13 @@ namespace FastLoad.Early
                 if (CfgPeek.Bool(cfg, "Speed", "FastDllLookup", true)) DllLookup.Install();
                 log.LogInfo("Fast DLL lookup: " + DllLookup.Mode);
 
+                LaterList.Wanted = LaterList.Parse(CfgPeek.Value(cfg, "Later", "Plugins"));
+                if (LaterList.Wanted.Count > 0)
+                {
+                    Logger.Listeners.Add(new LateGate());
+                    log.LogInfo("Later plugins: will hold back " + string.Join(", ", LaterList.Wanted.ToArray()));
+                }
+
                 if (!CfgPeek.Bool(cfg, "Probe", "Enabled", true))
                 {
                     log.LogInfo("Probe is off ([Probe] Enabled = false in " + ConfigFile + ")");
