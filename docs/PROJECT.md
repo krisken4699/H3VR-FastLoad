@@ -103,8 +103,9 @@ A plugin that depends on a held one is held too. StratumPlugin / DeliBehaviour t
 Measured on new2 with `Plugins = Sosig Hat Realism, CustomSosigModelFramework`:
 - CustomSosigModelFramework: 8.9 s and +4151 MB, now paid in the map instead of before the first frame.
 - Sosig Hat Realism: only 1.8 s / +131 MB when started late. The 13 s in its turn was game data that the first plugin to
-  touch it loads; with the plugin held, those seconds showed up between "plugins loaded" and the menu scene (1.7 s -> 12 s).
-  So it is no longer in new2's list.
+  touch it loads; with the plugin held, most of those seconds showed up between "plugins loaded" and the menu scene
+  (1.7 s -> 12 s). Third run with only CustomSosigModelFramework held: menu 71.7 s, range 93.1 s, so holding
+  Sosig Hat Realism as well is worth about 4 s. Both stay in new2's list.
 Not tested in game: a held plugin with dependents, the StratumPlugin guard, `When = AfterItemsLoaded`.
 
 ### 3. Result on new2 (start scene `IndoorRange_Updated`, later = both plugins above)
