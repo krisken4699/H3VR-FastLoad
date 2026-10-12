@@ -248,19 +248,11 @@ namespace FastLoad
                     return;
                 }
                 Log.LogInfo("Start scene: going to '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
-                // Loaded directly, not through the game's loader: that one blacks the headset out and loads at the
-                // slowest setting. You stand in the menu, the loading window says where to, and the scene changes.
-                ThreadPriority before = Application.backgroundLoadingPriority;
-                Application.backgroundLoadingPriority = ThreadPriority.High;
-                AsyncOperation op = SceneManager.LoadSceneAsync(pick.Value, LoadSceneMode.Single);
-                if (op == null)
-                {
-                    Application.backgroundLoadingPriority = before;
-                    Log.LogWarning("Start scene: Unity would not load '" + pick.Value + "'. Staying in the menu.");
-                    return;
-                }
+                // Through the game's own loader, the call the menu's buttons make. Loading the scene directly was
+                // faster and had no black screen, but the hands did not follow the controllers in the scene it
+                // led to (measured 2026-10-13: hand object 721-802 mm from the controller pose, not moving).
                 Jumped();
-                m_direct = true;
+                SteamVR_LoadLevel.Begin(pick.Value, false, 0.5f, 0f, 0f, 0f, 1f);
                 return;
             }
             if (pick.Kind == PickKind.Modded)

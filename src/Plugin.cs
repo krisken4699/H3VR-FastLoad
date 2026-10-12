@@ -94,6 +94,28 @@ namespace FastLoad
                 + "Example: ModularParts = false");
             MwoBridge.PartLevel = modularParts.Value;
 
+            ConfigEntry<bool> voices = Config.Bind("OnDemand", "SosigVoices", true,
+                "Custom Sosig Loader reads every installed sosig voice pack the moment item loading finishes: the game stood still for 7 s and\n"
+                + "then ran at 5-24 fps for half a minute on the profile this was built on (851 .wav and 10,927 .ogg files). With this on, a voice\n"
+                + "pack is read the first time a sosig that uses it appears, in the background: .wav files on a second thread, .ogg files one at a\n"
+                + "time. That sosig's first lines can come a few seconds late; the game does not stop.\n"
+                + "Does nothing when that mod is not installed. Needs a game restart.\n"
+                + "Example: SosigVoices = false");
+            if (voices.Value)
+            {
+                try
+                {
+                    SosigVoices sv = gameObject.AddComponent<SosigVoices>();
+                    sv.Log = Logger;
+                    sv.Begin();
+                    Logger.LogInfo("Sosig voices on demand: " + SosigVoices.Mode);
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Sosig voices on demand could not start: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
             ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", true,
                 "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
                 + "platform in full on the profile this was built on: 8600 textures, +31 GB, for the handful of parts on the gun.\n"
@@ -151,7 +173,7 @@ namespace FastLoad
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
                 + "You start in the main menu as always; the loading window says 'Loading map <name>' and the scene changes when it is in.\n"
-                + "Nothing is blacked out while it loads.\n"
+                + "The scene is loaded the way the game's own menu buttons load it, with its usual short black screen.\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
                 + "Examples:  Scene = IndoorRange_Updated     Scene = ArizonaTargets     Scene = ProvingGround     Scene = DriftWood (a modded map)\n"
                 + "How to find a name:\n"

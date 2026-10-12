@@ -1,0 +1,6 @@
+wait items                       # how long is the worst frame around "all items loaded" now
+wait 30                          # and the half minute after it
+sosig M_Swat_Heavy               # a game sosig: no custom voice
+wait 5
+dump
+quit

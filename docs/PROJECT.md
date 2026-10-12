@@ -265,3 +265,19 @@ the gun needs plus whatever those need, never a gun without what it depends on.
   In new2 runs the game logs "Setting control mode to CMODE: Oculus ... oculus quest2 (left/right controller)" in the
   menu and again in the range. Nothing found in FastLoad that touches hands; not proven either way.
 - Author name is invent60; GUID `invent60.h3vr.fastload`; old config file is moved to the new name at start.
+
+### 2026-10-13 morning: hands stuck after the start-scene jump (fixed), sosig voices (not hooked yet)
+
+- invent60: hands work in dev, not in new2. Probe now writes per second and hand: init, SteamVR pose valid/connected,
+  how far SteamVR says the controller moved, how far the hand object moved, and `gap` = distance between the hand
+  object and the controller pose. Following = gap 0 mm.
+- Measured headless: all features on -> in the range gap 721 / 802 mm, hands not moving, pose ok. All features on but
+  `[Start] Scene` empty -> gap 0. Start scene through `SteamVR_LoadLevel.Begin` (the menu buttons' call) -> gap 0 in
+  the range. So the direct `SceneManager.LoadSceneAsync` jump was the cause; why the hand stops following after it is
+  not traced. The jump goes through the game's loader again (black fade is back). Range reached at 90 s.
+- Lesson: a scene reached any other way than SteamVR_LoadLevel must be checked with the hand gap line before it ships.
+- Items-loaded freeze (3.3-7.3 s) = Custom Sosig Loader `LoadCustomVoiceLines` (851 .wav decoded on the main thread),
+  then 10,927 .ogg requests = the 5-24 fps crawl for ~15 s. `src/SosigVoices.cs` (`[OnDemand] SosigVoices`) defers both to
+  first use; it did NOT install in the runs so far (ModifySosig not found by parameter name; lookup changed to the
+  Sosig-typed first parameter, not yet seen working).
+- FastLoad was removed from new2 at invent60's request while hands were broken and put back after the fix.

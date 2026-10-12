@@ -1,0 +1,4 @@
+wait 12
+scene IndoorRange_Updated
+wait 25
+quit

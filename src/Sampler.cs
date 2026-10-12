@@ -105,7 +105,8 @@ namespace FastLoad
             double fps = span > 0 ? m_secFrames * 1000.0 / span : 0;
             Timeline.Write("SEC", "fps=" + LineFormat.N0(fps) + " worst=" + LineFormat.N0(m_secWorst) + "ms commit=" + LineFormat.Mb(m.Commit)
                 + " ws=" + LineFormat.Mb(m.WorkingSet) + " sysfree=" + LineFormat.Mb(m.SysFree)
-                + " mono=" + LineFormat.Mb(GC.GetTotalMemory(false)) + " gc=" + GC.CollectionCount(0) + " bundles=" + BundleLedger.LoadedCount + " inflight=" + BundleLedger.InFlight);
+                + " mono=" + LineFormat.Mb(GC.GetTotalMemory(false)) + " gc=" + GC.CollectionCount(0) + " bundles=" + BundleLedger.LoadedCount + " inflight=" + BundleLedger.InFlight
+                + " " + HandsNow());
 
             BundleHooks.CheckUnloads();
             m_secStart = nowMs;
@@ -118,6 +119,93 @@ namespace FastLoad
             if (!Timeline.Enabled) return;
             Timeline.Write("RUN", "quit");
             ReportJob.WriteNow();
+        }
+
+        private readonly UnityEngine.Vector3[] m_handWas = new UnityEngine.Vector3[2];
+        private readonly UnityEngine.Vector3[] m_rawWas = new UnityEngine.Vector3[2];
+        private bool m_saidHandPatches;
+
+        /// <summary>Once: every mod that has a Harmony patch on the game's hand and player-rig code.</summary>
+        private void SayHandPatches()
+        {
+            m_saidHandPatches = true;
+            try
+            {
+                Type[] types = new Type[] { typeof(FistVR.FVRViveHand), typeof(FistVR.FVRMovementManager), typeof(FistVR.FVRPlayerBody), typeof(FistVR.FVRInteractiveObject) };
+                foreach (System.Reflection.MethodBase m in HarmonyLib.Harmony.GetAllPatchedMethods())
+                {
+                    if (ReferenceEquals(m.DeclaringType, null) || Array.IndexOf(types, m.DeclaringType) < 0) continue;
+                    HarmonyLib.Patches info = HarmonyLib.Harmony.GetPatchInfo(m);
+                    if (info == null) continue;
+                    string owners = "";
+                    foreach (string o in info.Owners) owners += (owners.Length == 0 ? "" : ", ") + o;
+                    Timeline.Write("HND", "patched " + m.DeclaringType.Name + "." + m.Name + " by " + owners + " (prefix " + info.Prefixes.Count + ", postfix "
+                        + info.Postfixes.Count + ", transpiler " + info.Transpilers.Count + ")");
+                }
+            }
+            catch (Exception e)
+            {
+                Timeline.Write("HND", "could not list hand patches: " + e.GetType().Name + ": " + e.Message);
+            }
+        }
+
+        /// <summary>
+        /// "hands=L[init pose=ok conn=1 moved=12mm rel=310mm] R[...]": per hand, whether the game finished setting it
+        /// up, whether SteamVR says its pose is valid and its device connected, how far it moved in the last second
+        /// and how far it is from the head. A hand that does not follow the controller shows moved=0 with pose=ok,
+        /// or pose=BAD / conn=0 when SteamVR has no controller for it.
+        /// </summary>
+        private string HandsNow()
+        {
+            try
+            {
+                FistVR.FVRMovementManager mm = FistVR.GM.CurrentMovementManager;
+                if (mm == null || mm.Hands == null) return "hands=none";
+                if (!m_saidHandPatches) SayHandPatches();
+                UnityEngine.Transform head = FistVR.GM.CurrentPlayerBody != null ? FistVR.GM.CurrentPlayerBody.Head : null;
+                string text = "hands=";
+                for (int i = 0; i < mm.Hands.Length && i < 2; i++)
+                {
+                    FistVR.FVRViveHand h = mm.Hands[i];
+                    if (h == null)
+                    {
+                        text += (i == 0 ? "L" : " R") + "[null]";
+                        continue;
+                    }
+                    UnityEngine.Vector3 at = h.transform.position;
+                    int moved = (int)((at - m_handWas[i]).magnitude * 1000f);
+                    m_handWas[i] = at;
+                    string pose = "?";
+                    string conn = "?";
+                    string raw = "?";
+                    try
+                    {
+                        if (h.Pose != null)
+                        {
+                            pose = h.Pose[h.HandSource].poseIsValid ? "ok" : "BAD";
+                            conn = h.Pose[h.HandSource].deviceIsConnected ? "1" : "0";
+                            // What SteamVR itself reports for the controller, before the game does anything with it.
+                            UnityEngine.Vector3 rawAt = h.Pose[h.HandSource].localPosition;
+                            raw = ((int)((rawAt - m_rawWas[i]).magnitude * 1000f)) + "mm";
+                            m_rawWas[i] = rawAt;
+                            // How far the hand object sits from where SteamVR says the controller is (same space):
+                            // small and steady when the hand follows, anything when it is stuck somewhere.
+                            raw += " gap=" + (int)((h.transform.localPosition - rawAt).magnitude * 1000f) + "mm";
+                        }
+                    }
+                    catch (Exception)
+                    {
+                        pose = "err";
+                    }
+                    text += (i == 0 ? "L" : " R") + "[" + (h.HasInit ? "init" : "NOINIT") + " " + h.CMode + " pose=" + pose + " conn=" + conn + " steamvrMoved=" + raw + " handMoved=" + moved + "mm"
+                        + (head != null ? " rel=" + (int)((at - head.position).magnitude * 1000f) + "mm" : "") + (h.gameObject.activeInHierarchy ? "" : " OFF") + "]";
+                }
+                return text;
+            }
+            catch (Exception e)
+            {
+                return "hands=err:" + e.GetType().Name;
+            }
         }
     }
 }
