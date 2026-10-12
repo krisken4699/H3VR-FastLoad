@@ -1,0 +1,11 @@
+wait items
+wait 20
+census loaded counts
+icons check            # asks for 12 pictures: they must come back with pixels
+wait 5                 # the governor is told about them and drops them again
+icons drop
+census end             # full census: reads every picture back in (how long, how much)
+wait 5
+icons drop             # and out again
+wait 5
+quit

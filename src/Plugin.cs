@@ -48,6 +48,26 @@ namespace FastLoad
                 + "seconds, with a black screen). With ActiveModel = Sosig nothing is read at all. 'Random' reads every pack at start as before.\n"
                 + "Does nothing when that mod is not installed. Needs a game restart.\n"
                 + "Example: SosigModels = false");
+            ConfigEntry<bool> itemIcons = Config.Bind("OnDemand", "ItemIcons", true,
+                "Every item in the item spawner has a picture, and all of those pictures are read into memory while the item lists load, whether\n"
+                + "or not you ever open the spawner. On a big profile that is thousands of mostly uncompressed textures: about 16 GB of the game's\n"
+                + "32 GB on the profile this was built on. With this on, their pixels are dropped again as the lists come in; Unity reads a picture\n"
+                + "back from its mod file by itself the moment the spawner shows it, and it is dropped again once it is off screen.\n"
+                + "Cost: a spawner page can take a moment longer to show its pictures the first time. Nothing is changed on disk.\n"
+                + "Log: 'Item icons on demand: dropped N item pictures ...: memory -X MB'.\n"
+                + "Example: ItemIcons = false");
+            if (itemIcons.Value)
+            {
+                try
+                {
+                    gameObject.AddComponent<IconGovernor>().Log = Logger;
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Item icons on demand could not start: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
             // A pack being read stops the game: black in the headset instead of a stuck picture.
             bool modelCurtain = false;
             OnDemandSosigModels.Before = delegate() { modelCurtain = !Curtain.Closed; if (modelCurtain) Curtain.Close(); };
@@ -110,6 +130,20 @@ namespace FastLoad
             catch (Exception e)
             {
                 Logger.LogError("Start scene could not start: " + e.GetType().Name + ": " + e.Message);
+            }
+
+            try
+            {
+                if (System.IO.File.Exists(AutoTest.ScriptPath()))
+                {
+                    AutoTest test = gameObject.AddComponent<AutoTest>();
+                    test.Log = Logger;
+                    test.Begin();
+                }
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Autotest could not start: " + e.GetType().Name + ": " + e.Message);
             }
 
             if (!Timeline.Enabled)

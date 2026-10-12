@@ -1,0 +1,6 @@
+census arrive          # in the start scene, items still loading
+wait items
+wait 15
+census items-loaded
+dump
+quit

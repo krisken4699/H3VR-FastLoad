@@ -33,7 +33,9 @@ while [ $(( $(date +%s) - T0 )) -lt "$LIMIT" ]; do
     [ "$(stat -c %Y "$DEVLOG" 2>/dev/null || echo 0)" != "$DEV_BEFORE" ] && WHY="$WHY; the DEV profile's log changed instead: the launcher started dev, not new2"
     break
   fi
-  if [ -n "$RUN" ] && grep -a -q " PHS  quiet since" "$RUN"; then WHY="quiet reached"; sleep 20; break; fi
+  if [ -n "$UNTIL" ]; then
+    if [ -n "$RUN" ] && grep -a -q "$UNTIL" "$RUN"; then WHY="'$UNTIL' seen"; sleep 5; break; fi
+  elif [ -n "$RUN" ] && grep -a -q " PHS  quiet since" "$RUN"; then WHY="quiet reached"; sleep 20; break; fi
 done
 echo "stopping: $WHY $(date +%H:%M:%S)"
 
