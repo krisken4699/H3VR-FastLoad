@@ -59,3 +59,22 @@ Compatibility with ActionCam, including its restart on launch, applies to every 
   a time budget instead.
 - Never enable, disable or move mods on disk inside a Gale profile. FastLoad changes how things load, not which
   mods are installed.
+
+## Start scene (added 2026-10-12 on Ken's request, part of the same mod)
+
+`[Start] Scene` in `ken.h3vr.fastload.cfg`: skip the main menu into a game scene or an Atlas map; blank = no change.
+`[Start] When = Immediately | AfterItemsLoaded`. Names: `BepInEx/FastLoad/scenes.txt` (rewritten every start) and
+the console line `Scene loaded: <name>   (to start the game here: [Start] Scene = <name>)`.
+Code: `src/StartScene.cs`, `src/AtlasBridge.cs` (Atlas found at run time, no reference), `src/Pure/StartPick.cs`.
+
+Tested by Claude with `tools/startup_run.sh` on new2, 2026-10-12:
+- `Scene = IndoorRange_Updated`: menu loaded 121.0 s, range loaded 138.6 s.
+- `Scene = driftwood range` (Atlas map by its panel name): menu 127.0 s, DriftWood loaded 147.5 s.
+- `Scene = IndoorRange` (no such scene; the indoor range is `IndoorRange_Updated`): stays in menu.
+Seen only in the runs that jumped (cause not traced): one "Anvil: Couldn't find bundle ... NGA-SafehouseProgressionMode_Beta
+: nga_shp3" + "The Object you want to instantiate is null" just before the jump finished; one "Steamworks is not
+initialized"; single-frame NullReferenceExceptions from JerryTF / JerryAKMagEject / JerryTape / PlayerFootsteps in the
+first frame of the new scene. OtherLoader's 3 "Failed to load asset" errors are the same with and without a jump.
+Not tested: a Take & Hold map as start scene (it would skip the T&H lobby), how the map plays in the headset,
+`When = AfterItemsLoaded`.
+Unity reports the game's first scene with a load mode that is neither Single nor Additive (prints as 2).
