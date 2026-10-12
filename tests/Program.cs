@@ -7,6 +7,10 @@ namespace FastLoad.Tests
         public static int Main()
         {
             SmokeTests.Run();
+            LineFormatTests.Run();
+            TimelineWriterTests.Run();
+            CfgPeekTests.Run();
+            RunFilesTests.Run();
 
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed > 0 ? 1 : 0;
