@@ -12,6 +12,16 @@ namespace FastLoad
     {
         public float HitchMs = 25f;
 
+        /// <summary>
+        /// A frame this long keeps the menu from counting as quiet. Twice the slow-frame line, at least 50 ms: at
+        /// 72 Hz one dropped frame is 27.8 ms and happens now and then for good; with 25 ms quiet never came
+        /// (first real run, 2026-10-12).
+        /// </summary>
+        public float QuietBreakMs
+        {
+            get { return Math.Max(50f, HitchMs * 2f); }
+        }
+
         private const int ReportEveryMs = 10000;
 
         private double m_last = -1;
@@ -66,7 +76,7 @@ namespace FastLoad
                     FrameSources.Reset();
                 }
 
-                int quietSince = m_quiet.Step(nowMs, Phases.At(Phase.MenuLoaded), slow || BundleLedger.InFlight > 0);
+                int quietSince = m_quiet.Step(nowMs, Phases.At(Phase.MenuLoaded), ms >= QuietBreakMs || BundleLedger.InFlight > 0);
                 if (quietSince >= 0 && Phases.Mark(Phase.Quiet, quietSince))
                 {
                     Timeline.Write("PHS", "quiet since " + quietSince);
@@ -95,7 +105,7 @@ namespace FastLoad
             double fps = span > 0 ? m_secFrames * 1000.0 / span : 0;
             Timeline.Write("SEC", "fps=" + LineFormat.N0(fps) + " worst=" + LineFormat.N0(m_secWorst) + "ms commit=" + LineFormat.Mb(m.Commit)
                 + " ws=" + LineFormat.Mb(m.WorkingSet) + " sysfree=" + LineFormat.Mb(m.SysFree)
-                + " mono=" + LineFormat.Mb(GC.GetTotalMemory(false)) + " bundles=" + BundleLedger.LoadedCount + " inflight=" + BundleLedger.InFlight);
+                + " mono=" + LineFormat.Mb(GC.GetTotalMemory(false)) + " gc=" + GC.CollectionCount(0) + " bundles=" + BundleLedger.LoadedCount + " inflight=" + BundleLedger.InFlight);
 
             BundleHooks.CheckUnloads();
             m_secStart = nowMs;

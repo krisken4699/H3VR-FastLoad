@@ -20,6 +20,7 @@ namespace FastLoad.Early
                 FrameSources.Add(source);
 
                 int now = Clock.NowMs;
+                if (PluginLoads.Wants(source, text)) PluginLoads.See(text, now, Memory.Commit());
                 if (Phases.SeeLog(source, text, now))
                 {
                     // The frame sampler only exists once plugins have loaded: memory at the early marks is read here.

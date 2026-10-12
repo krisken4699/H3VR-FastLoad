@@ -128,7 +128,10 @@ One `MonoBehaviour` on a `DontDestroyOnLoad` object, created in the plugin's `Aw
 1. **Run**: profile path, command line flags, plugin count, whether a restart on launch happened and its cost.
 2. **Phases**, start time and length of each: process start, preloader done, chainloader start, chainloader done,
    Stratum "Loading complete", OtherLoaderPatched "All items loaded", first menu scene loaded, quiet (first 10 s
-   with no bundle in flight and no frame of 25 ms or more).
+   with no bundle in flight and no frame of 50 ms or more).
+   Changed 2026-10-12 after the first real run: the line was 25 ms, and at 72 Hz single dropped frames of 28 ms
+   kept coming for good, so quiet was never reached. Now twice `Probe.HitchMs`, at least 50 ms. Slow frames are
+   still written from `Probe.HitchMs` up.
 3. **Menu frames**: count of frames of 25, 50, 100, 250 ms or more, and median and 99th percentile frame time,
    for two windows: menu scene loaded until quiet, and the 30 s after quiet.
 4. **Bundles**: top 40 by wall time, top 40 by main-thread time, top 40 by commit growth; each with path, size,
@@ -142,6 +145,17 @@ One `MonoBehaviour` on a `DontDestroyOnLoad` object, created in the plugin's `Aw
 8. **Spawn bursts**: after quiet, every group of bundle loads that starts within 2 s of each other is listed as
    one burst: bundles, total size, wall time, frames of 25 ms or more during it, commit growth. One modular gun
    spawn shows up as one burst.
+
+9. **Plugin loading** (added 2026-10-12 after the first real run showed 95 s and +8 GB before the first frame,
+   where the sampler does not exist yet): per plugin, the time and process commit growth between its BepInEx
+   "Loading [...]" line and the next one; top 40 by time and by commit growth.
+
+When quiet is not seen, spawn bursts are counted from the later of menu loaded / OtherLoader all items loaded, and
+the report says so. Memory at a phase mark is printed only when a sample exists within 2 s of it; every mark's
+`PHS` line in the run file carries commit, working set and system commit free read at that moment. Each `SEC`
+line also carries `gc=` (garbage collections so far), to tell a collector pause from a load hitch. Totals per mod
+folder and per loader give commit growth over the group's span (first load start to last load end), never a sum
+of per-bundle growth: at start-up hundreds of loads overlap and would each claim the same growth.
 
 Phase marks that depend on another mod's log text are matched by text; a mark whose text never appeared is
 printed as "not seen", never guessed.

@@ -44,6 +44,7 @@ namespace FastLoad.Early
                 Process self = Process.GetCurrentProcess();
                 Clock.Start((DateTime.Now - self.StartTime).TotalMilliseconds);
                 Phases.Reset();
+                PluginLoads.Reset();
 
                 string dir = Path.Combine(Paths.BepInExRootPath, "FastLoad");
                 Directory.CreateDirectory(dir);

@@ -32,7 +32,7 @@ namespace FastLoad.Early
             "Stratum loading complete",
             "OtherLoader all items loaded",
             "main menu scene loaded",
-            "quiet (10 s with nothing loading and no slow frame)"
+            "quiet (10 s with nothing loading and no frame of 50 ms or more)"
         };
 
         private static readonly object s_gate = new object();

@@ -44,7 +44,7 @@ namespace FastLoad.Tests
             try { empty = ReportBuilder.Build(new ReportInput()); }
             catch (Exception) { threw = true; }
             T.True(!threw && empty != null, "a report builds from nothing");
-            for (int i = 1; i <= 8; i++) T.True(empty.Contains("== " + i + ". "), "empty report has section " + i);
+            for (int i = 1; i <= 9; i++) T.True(empty.Contains("== " + i + ". "), "empty report has section " + i);
 
             // MissingPhasesSayNotSeen
             ReportInput early = new ReportInput();
@@ -105,7 +105,28 @@ namespace FastLoad.Tests
             }
             inp.Mem = ml.ToArray();
 
+            PluginLoad pa = new PluginLoad();
+            pa.Name = "H3VR Sideloader 0.3.6"; pa.StartMs = 36500; pa.EndMs = 76500; pa.CommitStart = 3000 * MB; pa.CommitEnd = 3200 * MB;
+            PluginLoad pb = new PluginLoad();
+            pb.Name = "TNHFramework 0.2.4"; pb.StartMs = 76500; pb.EndMs = 81500; pb.CommitStart = 3200 * MB; pb.CommitEnd = 9200 * MB;
+            PluginLoad pc = new PluginLoad();
+            pc.Name = "StillLoading 1.0"; pc.StartMs = 81500;
+            inp.Plugins.Add(pa);
+            inp.Plugins.Add(pb);
+            inp.Plugins.Add(pc);
+
             string r = ReportBuilder.Build(inp);
+
+            string pl = Section(r, "== 9. Plugin loading");
+            T.True(pl.Contains("by time") && pl.Contains("by commit growth"), "plugins: two tables");
+            T.True(pl.IndexOf("H3VR Sideloader", StringComparison.Ordinal) < pl.IndexOf("TNHFramework", StringComparison.Ordinal), "plugins: slowest first in the time table");
+            T.True(pl.Contains("40.0 s") && pl.Contains("+6000MB"), "plugins: time and growth shown: " + pl);
+            T.True(pl.Contains("StillLoading 1.0") && pl.Contains("was loading when this was written"), "plugins: the one in progress is named");
+
+            // Loads that overlap share one commit growth: a group must not add the same growth up many times.
+            string modsNow = Section(r, "== 5. Mods");
+            T.True(modsNow.Contains("over the group's span"), "mods: says how commit is counted");
+            T.True(!modsNow.Contains("+1338MB"), "mods: the loader row is not a sum of overlapping growth: " + modsNow);
 
             string run = Section(r, "== 1. Run");
             T.True(run.Contains(@"C:\profiles\new2\BepInEx"), "run: profile");

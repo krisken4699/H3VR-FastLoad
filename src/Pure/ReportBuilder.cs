@@ -20,6 +20,7 @@ namespace FastLoad
         public int[] PhaseAt;
         public int LoaderBundleLines;
         public List<BundleRecord> Bundles = new List<BundleRecord>();
+        public List<PluginLoad> Plugins = new List<PluginLoad>();
         public FrameSample[] Frames = new FrameSample[0];
         public MemSample[] Mem = new MemSample[0];
     }
@@ -35,7 +36,12 @@ namespace FastLoad
             public int Count;
             public long Size;
             public double MainMs;
+            /// <summary>Commit at the group's last end minus commit at its first start.</summary>
             public long Commit;
+            public int FirstStart = int.MaxValue;
+            public int LastEnd = -1;
+            public long CommitAtFirstStart;
+            public long CommitAtLastEnd;
         }
 
         public static string Build(ReportInput inp)
@@ -60,6 +66,7 @@ namespace FastLoad
             NeverUsed(sb, inp);
             MemorySection(sb, inp, at);
             BurstSection(sb, inp, at);
+            PluginSection(sb, inp);
             return sb.ToString();
         }
 
@@ -196,6 +203,8 @@ namespace FastLoad
         {
             sb.AppendLine();
             sb.AppendLine("== 5. Mods ==");
+            sb.AppendLine("commit = process commit growth over the group's span: from its first load starting to its last load ending.");
+            sb.AppendLine("Everything else that ran in that span is in the number too (loads of many mods overlap at start-up).");
             sb.AppendLine("-- top " + TopN + " mod folders by commit growth --");
             Group(sb, inp.Bundles, true);
             sb.AppendLine("-- by the loader that asked for the bundles --");
@@ -222,15 +231,26 @@ namespace FastLoad
                 a.Count++;
                 a.Size += r.Size;
                 a.MainMs += r.MainMs;
-                a.Commit += r.CommitGrowth;
+                if (r.StartMs < a.FirstStart)
+                {
+                    a.FirstStart = r.StartMs;
+                    a.CommitAtFirstStart = r.CommitStart;
+                }
+                if (r.EndMs > a.LastEnd)
+                {
+                    a.LastEnd = r.EndMs;
+                    a.CommitAtLastEnd = r.CommitEnd;
+                }
             }
+            for (int i = 0; i < list.Count; i++) list[i].Commit = list[i].CommitAtLastEnd - list[i].CommitAtFirstStart;
             list.Sort(AggByCommit);
             int n = Math.Min(TopN, list.Count);
             for (int i = 0; i < n; i++)
             {
                 Agg a = list[i];
-                sb.AppendLine("commit=" + LineFormat.SignedMb(a.Commit).PadLeft(8) + " main=" + (LineFormat.N0(a.MainMs) + "ms").PadLeft(8)
-                    + " size=" + LineFormat.Mb(a.Size).PadLeft(7) + " bundles=" + a.Count + "  " + a.Name);
+                sb.AppendLine("commit=" + LineFormat.SignedMb(a.Commit).PadLeft(9) + " main=" + (LineFormat.N0(a.MainMs) + "ms").PadLeft(8)
+                    + " size=" + LineFormat.Mb(a.Size).PadLeft(7) + " span=" + LineFormat.Sec(a.FirstStart) + " to " + LineFormat.Sec(a.LastEnd)
+                    + " bundles=" + a.Count + "  " + a.Name);
             }
             if (list.Count == 0) sb.AppendLine("(none)");
         }
@@ -303,6 +323,61 @@ namespace FastLoad
         {
             return LineFormat.Sec(m.AtMs).PadLeft(10) + " commit=" + LineFormat.Mb(m.Commit).PadLeft(8) + " working set=" + LineFormat.Mb(m.WorkingSet).PadLeft(8)
                 + " system commit free=" + LineFormat.Mb(m.SysFree).PadLeft(8);
+        }
+
+        private static void PluginSection(StringBuilder sb, ReportInput inp)
+        {
+            sb.AppendLine();
+            sb.AppendLine("== 9. Plugin loading ==");
+            sb.AppendLine("BepInEx loads plugins one after another before the first frame. A plugin's turn runs from its 'Loading [...]' log line");
+            sb.AppendLine("to the next one; time and commit growth are everything that ran in that turn.");
+            List<PluginLoad> done = new List<PluginLoad>();
+            long totalMs = 0;
+            long totalGrowth = 0;
+            PluginLoad open = null;
+            for (int i = 0; i < inp.Plugins.Count; i++)
+            {
+                PluginLoad p = inp.Plugins[i];
+                if (p.EndMs < 0)
+                {
+                    open = p;
+                    continue;
+                }
+                done.Add(p);
+                totalMs += p.Ms;
+                totalGrowth += p.Growth;
+            }
+            sb.AppendLine("plugins: " + done.Count + ", total " + LineFormat.Sec((int)totalMs) + ", commit " + LineFormat.SignedMb(totalGrowth));
+            if (open != null) sb.AppendLine(open.Name + " was loading when this was written (began at " + LineFormat.Sec(open.StartMs) + ")");
+
+            sb.AppendLine("-- top " + TopN + " by time --");
+            PluginTable(sb, done, PluginByTime);
+            sb.AppendLine("-- top " + TopN + " by commit growth --");
+            PluginTable(sb, done, PluginByGrowth);
+        }
+
+        private static void PluginTable(StringBuilder sb, List<PluginLoad> done, Comparison<PluginLoad> order)
+        {
+            List<PluginLoad> sorted = new List<PluginLoad>(done);
+            sorted.Sort(order);
+            int n = Math.Min(TopN, sorted.Count);
+            for (int i = 0; i < n; i++)
+            {
+                PluginLoad p = sorted[i];
+                sb.AppendLine("took=" + LineFormat.Sec(p.Ms).PadLeft(8) + " commit=" + LineFormat.SignedMb(p.Growth).PadLeft(8)
+                    + " at=" + LineFormat.Sec(p.StartMs).PadLeft(8) + "  " + p.Name);
+            }
+            if (sorted.Count == 0) sb.AppendLine("(none)");
+        }
+
+        private static int PluginByTime(PluginLoad a, PluginLoad b)
+        {
+            return b.Ms.CompareTo(a.Ms);
+        }
+
+        private static int PluginByGrowth(PluginLoad a, PluginLoad b)
+        {
+            return b.Growth.CompareTo(a.Growth);
         }
 
         private static void BurstSection(StringBuilder sb, ReportInput inp, int[] at)

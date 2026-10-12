@@ -28,6 +28,7 @@ namespace FastLoad
             inp.PhaseAt = Phases.Snapshot();
             inp.LoaderBundleLines = Phases.LoaderBundleLines;
             inp.Bundles = BundleLedger.Snapshot();
+            inp.Plugins = PluginLoads.Snapshot();
             inp.Frames = FrameLog.Snapshot();
             inp.Mem = MemLog.Snapshot();
             try
