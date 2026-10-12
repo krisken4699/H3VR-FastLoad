@@ -25,6 +25,8 @@ namespace FastLoad.Early
         public int AssetCalls;
         public int LastUseMs = -1;
         public int UnloadMs = -1;
+        /// <summary>LoadFeed token while the load is in flight; 0 = not fed.</summary>
+        public int FeedToken;
 
         public bool Done
         {
@@ -98,6 +100,7 @@ namespace FastLoad.Early
             r.Async = isAsync;
             r.StartMs = nowMs;
             r.CommitStart = commit;
+            if (r.By.IndexOf("ModulWorkshop", StringComparison.OrdinalIgnoreCase) < 0) r.FeedToken = LoadFeed.Begin(r.Name, r.Mod, false, false, nowMs);
             Monitor.Enter(s_gate);
             try
             {
@@ -119,6 +122,7 @@ namespace FastLoad.Early
             try
             {
                 if (r.EndMs >= 0) return;
+                LoadFeed.End(r.FeedToken, nowMs);
                 r.EndMs = nowMs;
                 r.CommitEnd = commit;
                 r.MainMs += mainMs;

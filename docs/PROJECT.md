@@ -182,3 +182,50 @@ What the memory was (new2, IndoorRange_Updated, nobody in the headset):
 - NOT solved: the first modular gun still takes 66 s to appear (the 52 bundles are still read in full; only their
   textures are dropped afterwards). Second spawn 24 ms. Needs part-level loading in/around ModulWorkshop_Optimizer.
 - NOT checked: how it looks. Nobody has seen the item spawner or a gun in the headset with the governors on.
+
+## 2026-10-13 request: loading window, ModulWorkshop_Optimizer, lag survey (Ken, verbatim)
+
+"When loading things have a small window that scales horizontally to the text. Make it say what it's loading and from
+what mod. And if it's like you have to load a lot of things have like idk loading smth from smth 5/24, In case you have
+a lot of things to load. And make it disappear when it's done. No need to report unloading. Have it float in front of
+you somewhere on the top like a UI but have its render over everything else so you can't block it with a gun or
+something. I don't want it to stutter when you look around too would be good if you can I don't know mount it to your
+head. But this shouldn't replace the modul workshop optimizer mod but maybe patch it silently to make it work better
+with ours. Make it a dependency that this mod needs. Or at least it's a message I want to send thank you for your work
+to that mod author silently without including anything in the read me or stuff. Keep looking for big wins and
+especially test a bit on what mods make you lag just having it loaded or having its models in front of you if it's guns
+or whatever. Basically see what modded content is adding lag to new2. When you spot it, look for the root cause of
+things and try to come up with your way to optimize it and make not just new2 but any other Future mod profiles work
+well with all these mods"
+
+Items: (1) loading window: width fits text; what + from which mod; n/m when many; gone when done; no unloading;
+head-mounted, top, drawn over everything, no stutter. (2) ModulWorkshop_Optimizer stays; patched silently to work
+better with FastLoad; a dependency of FastLoad (BepInDependency now, Thunderstore manifest dependency at packaging);
+nothing about it in README. (3) lag survey: which mods cost frame time just loaded / with their models in view; root
+causes; fixes that work for any profile.
+
+### Built for that request (2026-10-13, early morning)
+
+- **Loading window** (`[Hud] LoadingWindow`, `src/LoadingHud.cs`, feed `patcher/Pure/LoadFeed.cs`): TextMesh + backing quad
+  on the head camera's transform, depth test off, render queue 4000/4001, backing as wide as the text, hidden when the
+  feed is empty (0.7 s hold between loads of a batch). Text from the bundle hooks and the optimizer bridge:
+  "Loading mw_noveske_n4 from FraDirahra-Noveske_N4   3/48". In the run log as ` HUD ` lines. NOT seen in the headset.
+- **ModulWorkshop_Optimizer** is a hard BepInDependency (`00.Sirdoggy.ModulWorkshopOptimizer`). `src/MwoBridge.cs` wraps
+  its `LoadAndRegisterBundleAsync` routine (unchanged inside) to name and count its loads, and `[Speed] BoostSpawnLoads`
+  raises background loading to Normal while a spawn waits for them. One ModulAR15, 48 bundles: 65 s at the game's
+  setting, 57 s at Normal (26-45 fps), 48 s at High (14-46 fps); Normal is the default.
+  AT PACKAGING: add its Thunderstore dependency string to manifest.json; nothing about it in README (Ken's wish).
+  Still open: loading only the bundles of the parts on the gun (the rest when the workshop UI asks) would remove most of
+  those 57 s; that needs part-name -> bundle data the optimizer's cache does not hold.
+- **Lag profiler** (test step `profile 20 label`, `src/LagProfiler.cs`): times every mod component's per-frame methods
+  and every mod Harmony prefix/postfix (8549 methods on new2; 56 s to set up). Result on new2, indoor range, idle:
+  2.49 ms of mod code a frame, of which JerryFBT2.FBTPlugin.FixedUpdate 1.21 ms and JerryFBT.BepInExPlugin.FixedUpdate
+  0.41 ms (both: `FixedUpdate() { SetConfig(); }`, i.e. Config.Bind for every setting on every physics tick), ActionCam
+  0.53 ms; with 3 guns + 3 sosigs JerryTF.ThngFlingerPGin.FixedUpdate 0.99 ms (Physics.OverlapSphere 50 m + GetComponent
+  per body, every tick). Every other mod under 0.04 ms.
+- **Tame** (`src/Tame.cs`): `[Tame] ConfigRebinders` finds plugin per-frame methods that only bind config (IL check:
+  no branches, calls only Config.Bind / get_Config / BepInEx.Configuration constructors / same-class methods of the same
+  kind) and lets them run once; found FBT, FBT2 and Pressig on new2. `[Tame] Throttle` = list of `Type.Method@seconds`
+  (default: `JerryTF.ThngFlingerPGin.SearchTarget@0.5`). After: mod code 0.69 ms idle (was 2.49), 0.95 ms with guns and
+  sosigs (was 2.92); frame 14.2 ms (was 15.7).
+- Not done yet from the request: what modded *models* cost in view (triangles, materials, lights per item).

@@ -1,0 +1,7 @@
+wait items
+wait 12
+spawn ModulAR15                  # part bundles: window counts them, background loading boosted
+wait 8
+clear
+wait 5
+quit

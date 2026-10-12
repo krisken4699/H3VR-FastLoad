@@ -29,6 +29,7 @@ namespace FastLoad
     ///   model id                      CustomSosigModelFramework: pick that model (Sosig, Random or a pack id)
     ///   scene name                    load a game scene or a modded map, wait until it is there
     ///   clear                         remove what spawn and sosig made
+    ///   profile 20 label              time every mod's per-frame code for 20 s, to lag_*.txt (patches stay in until the game closes)
     ///   icons drop | icons check      one pass of the icon governor / ask for a few icons and draw them, to see that they come back
     ///   census label counts           object counts only (the full census reads every dropped picture back in)
     ///   quit                          close the game
@@ -184,6 +185,7 @@ namespace FastLoad
                     else if (verb == "model") m_note = PickModel(rest);
                     else if (verb == "scene") m_step = new SceneStep(rest);
                     else if (verb == "clear") m_note = Clear();
+                    else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
                     else if (verb == "quit")
                     {
@@ -213,6 +215,37 @@ namespace FastLoad
             private readonly Stopwatch m_sw = Stopwatch.StartNew();
             public WaitSeconds(double seconds) { m_seconds = seconds; }
             public override bool Tick(AutoTest test) { return m_sw.Elapsed.TotalSeconds >= m_seconds; }
+        }
+
+        /// <summary>"profile 20 label": times mod code for that many seconds.</summary>
+        private sealed class ProfileStep : Step
+        {
+            private readonly Stopwatch m_sw = new Stopwatch();
+            private readonly double m_seconds = 20;
+            private readonly string m_label = "profile";
+            private readonly string m_setup;
+
+            public ProfileStep(string rest)
+            {
+                string[] parts = rest.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0) m_seconds = double.Parse(parts[0], CultureInfo.InvariantCulture);
+                if (parts.Length > 1) m_label = parts[1];
+                m_setup = LagProfiler.Install();
+            }
+
+            public override bool Tick(AutoTest test)
+            {
+                if (!m_sw.IsRunning)
+                {
+                    // The frame the patches went in is not a normal one.
+                    LagProfiler.Begin();
+                    m_sw.Start();
+                    return false;
+                }
+                if (m_sw.Elapsed.TotalSeconds < m_seconds) return false;
+                Note = LagProfiler.End(m_label) + " | " + m_setup;
+                return true;
+            }
         }
 
         private sealed class WaitItems : Step

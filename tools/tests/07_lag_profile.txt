@@ -1,0 +1,14 @@
+wait items
+wait 25
+profile 20 idle-range            # nothing spawned: what mods cost just by being loaded
+spawn M1911
+spawn ModulAK101Factory
+spawn potatoesBeretta92fsMelom
+sosig M_Swat_Heavy
+sosig M_Swat_Guard
+sosig M_Swat_Breacher
+wait 5
+profile 20 guns-and-sosigs       # three guns on the floor, three sosigs alive
+clear
+wait 3
+quit

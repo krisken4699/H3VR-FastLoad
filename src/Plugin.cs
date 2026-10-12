@@ -12,6 +12,7 @@ namespace FastLoad
     /// hooks by the time this loads.
     /// </summary>
     [BepInPlugin("ken.h3vr.fastload", "FastLoad", "0.1.0")]
+    [BepInDependency(MwoBridge.Guid, BepInDependency.DependencyFlags.HardDependency)]
     public class Plugin : BaseUnityPlugin
     {
         private void Awake()
@@ -165,6 +166,59 @@ namespace FastLoad
             catch (Exception e)
             {
                 Logger.LogError("Autotest could not start: " + e.GetType().Name + ": " + e.Message);
+            }
+
+            ConfigEntry<bool> rebinders = Config.Bind("Tame", "ConfigRebinders", true,
+                "Some plugins bind their whole config again every frame or physics tick (measured: 0.95 ms a tick for one plugin with 8 settings).\n"
+                + "Binding a setting twice just returns the same setting, so everything after the first time is wasted. With this on, a plugin's\n"
+                + "Update / FixedUpdate / LateUpdate that does nothing but bind settings runs once and is skipped afterwards. Found by looking at\n"
+                + "the plugin's code when the game starts, so it works for plugins FastLoad has never heard of. Each one found is named in the log.\n"
+                + "Example: ConfigRebinders = false");
+            ConfigEntry<string> throttle = Config.Bind("Tame", "Throttle", "JerryTF.ThngFlingerPGin.SearchTarget@0.5",
+                "Mod methods that run every frame or physics tick but do not need to: each runs at most once per the given number of seconds,\n"
+                + "the calls in between are skipped. Write each as Namespace.Type.Method@seconds, separated by commas. Only methods that return\n"
+                + "nothing. Entries for mods that are not installed do nothing.\n"
+                + "The default entry: Voice Control For ThingFlinger looks for every physics object within 50 m of you on every physics tick\n"
+                + "(measured 1.0 ms a frame with three guns and three sosigs around, more with more objects); twice a second is plenty.\n"
+                + "To find candidates: tools/tests/07_lag_profile.txt in the FastLoad source writes BepInEx/FastLoad/lag_*.txt, mod by mod.\n"
+                + "Example: Throttle = JerryTF.ThngFlingerPGin.SearchTarget@0.5, Some.Mod.Scanner.FindTargets@1\n"
+                + "Leave empty to throttle nothing.");
+            try
+            {
+                Tame tame = gameObject.AddComponent<Tame>();
+                tame.Log = Logger;
+                tame.Rebinders = rebinders.Value;
+                tame.ThrottleList = throttle.Value ?? "";
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Tame could not start: " + e.GetType().Name + ": " + e.Message);
+            }
+
+            ConfigEntry<bool> window = Config.Bind("Hud", "LoadingWindow", true,
+                "A small line of text in front of you, above your line of sight, while something loads: what is loading and from which mod,\n"
+                + "with a count when there is more than one thing ('Loading mw_ar2_plus from Not_Wolfie-AR2_Plus   5/24'). Gone when it is done.\n"
+                + "It moves with your head and is drawn over everything, so a gun in front of it does not hide it. Unloading is not shown.\n"
+                + "Example: LoadingWindow = false");
+            ConfigEntry<bool> boost = Config.Bind("Speed", "BoostSpawnLoads", true,
+                "When you spawn a modular gun, it cannot appear until the part packs for it are loaded. The game loads in the background at its\n"
+                + "slowest setting (2 ms of each frame). With this on, background loading gets 10 ms of each frame while such a spawn is waiting,\n"
+                + "and goes back afterwards: the gun appears sooner, frames are a little longer meanwhile.\n"
+                + "Example: BoostSpawnLoads = false");
+            try
+            {
+                MwoBridge.Install(Logger);
+                Logger.LogInfo("ModulWorkshop_Optimizer bridge: " + MwoBridge.Mode);
+                // The window reads what the bundle hooks see; with the probe off they are not in yet.
+                if (window.Value && !Timeline.Enabled) BundleHooks.Install(false);
+                LoadingHud hud = gameObject.AddComponent<LoadingHud>();
+                hud.Log = Logger;
+                hud.ShowWindow = window.Value;
+                hud.Boost = boost.Value;
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Loading window could not start: " + e.GetType().Name + ": " + e.Message);
             }
 
             if (!Timeline.Enabled)

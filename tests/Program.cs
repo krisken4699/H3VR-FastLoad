@@ -20,6 +20,8 @@ namespace FastLoad.Tests
             DllIndexTests.Run();
             LaterListTests.Run();
             WarmTests.Run();
+            LoadFeedTests.Run();
+            TameListTests.Run();
 
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed > 0 ? 1 : 0;
