@@ -56,6 +56,15 @@ namespace FastLoad.Tests
             T.Eq(PickKind.NotFound, StartPick.Resolve("NoSuchPlace", game, maps).Kind, "unknown name");
             T.Eq(PickKind.NotFound, StartPick.Resolve("IndoorRange", new List<string>(), new List<MapEntry>()).Kind, "nothing known yet");
 
+            // A near miss gets the real names offered.
+            game.Add("IndoorRange_Updated");
+            T.Eq("IndoorRange_Updated", StartPick.Suggest("indoorrange_", game, maps), "suggests the game scene that contains the text");
+            T.Eq("abass20.junglevalley", StartPick.Suggest("jungle", game, maps), "suggests a modded map by part of its name");
+            T.Eq("ArizonaTargets", StartPick.Suggest("ArizonaTargets_Day", game, maps), "suggests a name the text contains");
+            T.Eq("", StartPick.Suggest("zzzz", game, maps), "nothing close, nothing suggested");
+            T.Eq("", StartPick.Suggest("", game, maps), "empty text, nothing suggested");
+            game.Remove("IndoorRange_Updated");
+
             string list = StartPick.ListText(game, maps, true);
             T.True(list.Contains("Scene = IndoorRange") && list.Contains("Scene = ArizonaTargets"), "list has the game scenes ready to paste");
             T.True(list.IndexOf("Scene = ArizonaTargets") < list.IndexOf("Scene = IndoorRange"), "game scenes are sorted");

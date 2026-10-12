@@ -29,7 +29,7 @@ namespace FastLoad
             ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
                 "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
                 + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
-                + "Examples:  Scene = IndoorRange     Scene = ArizonaTargets     Scene = HickockRange\n"
+                + "Examples:  Scene = IndoorRange_Updated     Scene = ArizonaTargets     Scene = ProvingGround     Scene = DriftWood (a modded map)\n"
                 + "How to find a name:\n"
                 + "  1. Open BepInEx/FastLoad/scenes.txt (written every time the game starts): every game scene and every modded map, ready to copy.\n"
                 + "  2. Or load the map once by hand and read the BepInEx console / LogOutput.log: FastLoad prints\n"

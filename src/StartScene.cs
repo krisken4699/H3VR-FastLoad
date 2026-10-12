@@ -41,6 +41,7 @@ namespace FastLoad
         private int m_listedGame = -1;
         private int m_listedMaps = -1;
         private bool m_saidWaiting;
+        private bool m_saidLooking;
 
         private void Awake()
         {
@@ -69,7 +70,8 @@ namespace FastLoad
         {
             try
             {
-                if (mode != LoadSceneMode.Single) return;
+                // Not "!= Single": Unity reports the first scene of the game with a mode that is neither value.
+                if (mode == LoadSceneMode.Additive) return;
                 string id = AtlasBridge.CurrentId();
                 List<string> game = GameScenes();
                 bool isGame = Contains(game, scene.name);
@@ -169,9 +171,20 @@ namespace FastLoad
                 return;
             }
             // Not found: a modded map may still be on its way in. Atlas maps are registered while mods load.
-            if (sinceMenu < GiveUpSeconds && (When == StartWhen.Immediately || !m_watch.Seen || sinceMenu < SettleSeconds + 5)) return;
+            if (sinceMenu < GiveUpSeconds && AtlasBridge.Found && (When == StartWhen.Immediately || !m_watch.Seen || sinceMenu < SettleSeconds + 5))
+            {
+                if (!m_saidLooking)
+                {
+                    m_saidLooking = true;
+                    Log.LogInfo("Start scene: '" + Wanted.Trim() + "' is not a game scene and not a modded map registered so far; checking again for up to "
+                        + (int)GiveUpSeconds + " s while mods load");
+                }
+                return;
+            }
             Finish();
-            Log.LogWarning("Start scene: no scene or modded map is called '" + Wanted.Trim() + "'. Staying in the menu. Every name that works is listed in "
+            string close = StartPick.Suggest(Wanted, game, maps);
+            Log.LogWarning("Start scene: no scene or modded map is called '" + Wanted.Trim() + "'. Staying in the menu."
+                + (close.Length > 0 ? " Did you mean: " + close + "?" : "") + " Every name that works is listed in "
                 + ListPath() + (AtlasBridge.Found ? "" : " (Atlas, which loads modded maps, is not installed)"));
         }
 

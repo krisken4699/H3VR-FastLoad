@@ -101,6 +101,32 @@ namespace FastLoad
             return pick;
         }
 
+        /// <summary>
+        /// For a name that was not found: up to five real names that contain the text or are contained in it
+        /// (game scenes by name, modded maps by identifier), comma separated. "" when nothing is close.
+        /// </summary>
+        public static string Suggest(string wanted, IList<string> gameScenes, IList<MapEntry> modded)
+        {
+            string w = wanted == null ? "" : wanted.Trim();
+            if (w.Length < 3) return "";
+            List<string> close = new List<string>();
+            for (int i = 0; i < gameScenes.Count && close.Count < 5; i++)
+            {
+                if (Near(gameScenes[i], w)) close.Add(gameScenes[i]);
+            }
+            for (int i = 0; i < modded.Count && close.Count < 5; i++)
+            {
+                if (Near(modded[i].Id, w) || Near(modded[i].Name, w)) close.Add(modded[i].Id);
+            }
+            return string.Join(", ", close.ToArray());
+        }
+
+        private static bool Near(string name, string w)
+        {
+            if (name == null || name.Length < 3) return false;
+            return name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0 || w.IndexOf(name, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private static bool Same(string a, string b)
         {
             return a != null && string.Equals(a.Trim(), b, StringComparison.OrdinalIgnoreCase);
