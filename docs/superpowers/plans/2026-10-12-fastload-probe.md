@@ -2285,7 +2285,7 @@ namespace FastLoad.Early
             try
             {
                 MethodInfo m = target.GetMethod(name, Any, null, args, null);
-                if (m == null)
+                if (ReferenceEquals(m, null))
                 {
                     Timeline.Write("ERR", "hook target not found: AssetBundle." + name + "/" + args.Length);
                     return 0;
@@ -2516,9 +2516,9 @@ namespace FastLoad.Early
                 for (int i = 0; i < n; i++)
                 {
                     MethodBase m = st.GetFrame(i).GetMethod();
-                    if (m == null) continue;
+                    if (ReferenceEquals(m, null)) continue;
                     Type t = m.DeclaringType;
-                    if (t == null) continue;    // Harmony's generated wrapper has no declaring type
+                    if (ReferenceEquals(t, null)) continue;    // Harmony's generated wrapper has no declaring type
                     string a = t.Assembly.GetName().Name;
                     if (a == "UnityEngine" || a == "mscorlib" || a == "0Harmony" || a == "FastLoadPatcher" || a == "FastLoad") continue;
                     if (a.StartsWith("MonoMod", StringComparison.Ordinal) || a.StartsWith("System", StringComparison.Ordinal)) continue;
