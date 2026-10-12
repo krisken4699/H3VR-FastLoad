@@ -11,13 +11,13 @@ namespace FastLoad
     /// The preloader half (FastLoadPatcher.dll) has already started the clock, the timeline file and the bundle
     /// hooks by the time this loads.
     /// </summary>
-    [BepInPlugin("ken.h3vr.fastload", "FastLoad", "0.1.0")]
+    [BepInPlugin("invent60.h3vr.fastload", "FastLoad", "0.1.0")]
     [BepInDependency(MwoBridge.Guid, BepInDependency.DependencyFlags.HardDependency)]
     public class Plugin : BaseUnityPlugin
     {
         private void Awake()
         {
-            // Bound first, always: this writes ken.h3vr.fastload.cfg, which the preloader half reads at the next start.
+            // Bound first, always: this writes invent60.h3vr.fastload.cfg, which the preloader half reads at the next start.
             ConfigEntry<bool> enabled = Config.Bind("Probe", "Enabled", true,
                 "Turns the whole probe off: no hooks, no sampler, no files. Takes effect at the next game start. Example: false");
             ConfigEntry<int> hitchMs = Config.Bind("Probe", "HitchMs", 25,

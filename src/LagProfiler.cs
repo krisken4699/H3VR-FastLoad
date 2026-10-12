@@ -50,7 +50,7 @@ namespace FastLoad
             if (s_installed) return "already in: " + s_patched + " methods";
             s_installed = true;
             Stopwatch sw = Stopwatch.StartNew();
-            Harmony h = new Harmony("ken.h3vr.fastload.lagprofiler");
+            Harmony h = new Harmony("invent60.h3vr.fastload.lagprofiler");
             HarmonyMethod pre = new HarmonyMethod(typeof(LagProfiler).GetMethod("Pre", Any));
             HarmonyMethod post = new HarmonyMethod(typeof(LagProfiler).GetMethod("Post", Any));
             Assembly mine = typeof(LagProfiler).Assembly;

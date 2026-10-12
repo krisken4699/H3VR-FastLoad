@@ -64,7 +64,7 @@ namespace FastLoad
                     Mode = "ModulWorkshop_Optimizer has other method names than expected (another version?)";
                     return;
                 }
-                Harmony h = new Harmony("ken.h3vr.fastload.mwo");
+                Harmony h = new Harmony("invent60.h3vr.fastload.mwo");
                 h.Patch(one, null, new HarmonyMethod(typeof(MwoBridge).GetMethod("OnePost", Any)));
                 h.Patch(many, new HarmonyMethod(typeof(MwoBridge).GetMethod("ManyPre", Any)));
                 Mode = "on";

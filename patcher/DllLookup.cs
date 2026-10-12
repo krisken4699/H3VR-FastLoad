@@ -33,7 +33,7 @@ namespace FastLoad.Early
         {
             try
             {
-                Harmony h = new Harmony("ken.h3vr.fastload.dlllookup");
+                Harmony h = new Harmony("invent60.h3vr.fastload.dlllookup");
                 Type util = typeof(BepInEx.Utility);
                 MethodInfo asm = util.GetMethod("TryResolveDllAssembly", Any, null,
                     new Type[] { typeof(AssemblyName), typeof(string), typeof(Assembly).MakeByRefType() }, null);

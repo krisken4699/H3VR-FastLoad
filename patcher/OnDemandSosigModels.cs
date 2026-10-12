@@ -94,7 +94,7 @@ namespace FastLoad.Early
             }
 
             Type me = typeof(OnDemandSosigModels);
-            Harmony h = new Harmony("ken.h3vr.fastload.ondemand.sosigmodels");
+            Harmony h = new Harmony("invent60.h3vr.fastload.ondemand.sosigmodels");
             h.Patch(awake, new HarmonyMethod(me.GetMethod("AwakePre", Any)), new HarmonyMethod(me.GetMethod("AwakePost", Any)));
             h.Patch(discover, null, new HarmonyMethod(me.GetMethod("DiscoverPost", Any)));
             h.Patch(attach, new HarmonyMethod(me.GetMethod("AttachPre", Any)));

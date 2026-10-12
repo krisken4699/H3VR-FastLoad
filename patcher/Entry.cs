@@ -21,7 +21,8 @@ namespace FastLoad.Early
     {
         public static IEnumerable<string> TargetDLLs { get; } = new string[0];
 
-        private const string ConfigFile = "ken.h3vr.fastload.cfg";
+        private const string ConfigFile = "invent60.h3vr.fastload.cfg";
+        private const string OldConfigFile = "k" + "en.h3vr.fastload.cfg";
         private const string RestartMarker = "ACTIONCAM_GFXJOBS_RESTART";
 
         public static void Patch(AssemblyDefinition assembly)
@@ -34,6 +35,21 @@ namespace FastLoad.Early
             try
             {
                 string cfgPath = Path.Combine(Paths.ConfigPath, ConfigFile);
+                // The plugin's GUID, and with it the config file's name, changed once. Settings made under the old
+                // name come along; this runs before BepInEx opens the plugin's config.
+                string oldCfg = Path.Combine(Paths.ConfigPath, OldConfigFile);
+                try
+                {
+                    if (File.Exists(oldCfg) && !File.Exists(cfgPath))
+                    {
+                        File.Move(oldCfg, cfgPath);
+                        log.LogInfo("Settings carried over from " + OldConfigFile + " to " + ConfigFile);
+                    }
+                }
+                catch (Exception e)
+                {
+                    log.LogWarning("Could not carry settings over from " + OldConfigFile + ": " + e.Message);
+                }
                 string cfg = File.Exists(cfgPath) ? File.ReadAllText(cfgPath) : "";
                 // Speed-ups come first and do not depend on the probe.
                 if (CfgPeek.Bool(cfg, "Speed", "WarmDlls", true))

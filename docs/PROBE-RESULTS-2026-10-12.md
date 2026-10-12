@@ -3,7 +3,7 @@
 Run files: `new2/BepInEx/FastLoad/run_20261012-171816_36028.log` (run 1), `run_20261012-173131_22168.log` (run 2).
 Probe health both runs: 0 ERR lines, bundle hooks "managed, 12 of 12", restart on launch seen (cost 2264 / 1315 ms),
 hooks saw 760 bundle loads vs 734 reported by loaders, 0 bundles used without being seen loading.
-Not yet measured (needs Ken in headset): one AR2 spawn, one T&H map load and back.
+Not yet measured (needs invent60 in headset): one AR2 spawn, one T&H map load and back.
 
 ## Time (run 2; run 1 within a few seconds)
 | mark | at |

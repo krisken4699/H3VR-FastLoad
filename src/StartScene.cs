@@ -22,7 +22,7 @@ namespace FastLoad
     ///
     /// You start in the main menu as always. A second later the loading window says "Loading map X" and the scene
     /// changes when it is in; nothing is blacked out. (An earlier version hid the menu and went straight to the
-    /// scene; Ken asked for this instead on 2026-10-13. Early() below is that version's entry and is not called.)
+    /// scene; invent60 asked for this instead on 2026-10-13. Early() below is that version's entry and is not called.)
     /// </summary>
     public sealed class StartScene : MonoBehaviour
     {

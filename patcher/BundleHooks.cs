@@ -54,7 +54,7 @@ namespace FastLoad.Early
             s_installed = true;
             try
             {
-                Harmony h = new Harmony("ken.h3vr.fastload.early");
+                Harmony h = new Harmony("invent60.h3vr.fastload.early");
                 Type ab = typeof(AssetBundle);
                 Type str = typeof(string);
                 Type u32 = typeof(uint);

@@ -2,7 +2,7 @@
 
 Fast-load and memory mod for huge H3VR mod profiles. Target profile: Gale `new2`.
 
-## Ken's request, verbatim (2026-10-12)
+## invent60's request, verbatim (2026-10-12)
 
 > make a fast load mod for huge mod profiles. basically scheduling system of which mod to load first and also use
 > the modulworkshop optimizer mod where you can load assets on demand. look at all the custom sosigs and maps beind
@@ -18,13 +18,13 @@ Fast-load and memory mod for huge H3VR mod profiles. Target profile: Gale `new2`
 > make sure its compatible with action cam mod and especially when action cam mod can do the restart thing on launch
 > too
 
-## Pieces (Ken approved this split and order, 2026-10-12)
+## Pieces (invent60 approved this split and order, 2026-10-12)
 
 Each piece gets its own spec, plan and build. All four are in scope; none is dropped.
 
 | # | Piece | What it covers from the request | Status |
 |---|-------|---------------------------------|--------|
-| 1 | Load timeline + memory probe | Measure where load time, menu lag and memory go | built, deployed to new2, start-up measured 2026-10-12 (docs/PROBE-RESULTS-2026-10-12.md); spawn + map part needs Ken |
+| 1 | Load timeline + memory probe | Measure where load time, menu lag and memory go | built, deployed to new2, start-up measured 2026-10-12 (docs/PROBE-RESULTS-2026-10-12.md); spawn + map part needs invent60 |
 | 2 | Menu-first scheduler | Order of what loads first, background loading, off-thread work, menu usable while loading | not started |
 | 3 | Memory governor | Free things not in use when memory runs short: maps, sosig voice lines, unused guns; hot swap | not started |
 | 4 | Modul part-level loading | Load only the parts a modular gun uses, not every bundle of every mod in the part group | not started |
@@ -60,9 +60,9 @@ Compatibility with ActionCam, including its restart on launch, applies to every 
 - Never enable, disable or move mods on disk inside a Gale profile. FastLoad changes how things load, not which
   mods are installed.
 
-## Start scene (added 2026-10-12 on Ken's request, part of the same mod)
+## Start scene (added 2026-10-12 on invent60's request, part of the same mod)
 
-`[Start] Scene` in `ken.h3vr.fastload.cfg`: skip the main menu into a game scene or an Atlas map; blank = no change.
+`[Start] Scene` in `invent60.h3vr.fastload.cfg`: skip the main menu into a game scene or an Atlas map; blank = no change.
 `[Start] When = Immediately | AfterItemsLoaded`. Names: `BepInEx/FastLoad/scenes.txt` (rewritten every start) and
 the console line `Scene loaded: <name>   (to start the game here: [Start] Scene = <name>)`.
 Code: `src/StartScene.cs`, `src/AtlasBridge.cs` (Atlas found at run time, no reference), `src/Pure/StartPick.cs`.
@@ -79,9 +79,9 @@ Not tested: a Take & Hold map as start scene (it would skip the T&H lobby), how 
 `When = AfterItemsLoaded`.
 Unity reports the game's first scene with a load mode that is neither Single nor Additive (prints as 2).
 
-## Fast first load (2026-10-12 evening, Ken: "i want first load to be fast ... go right in and start playing while other things start loading")
+## Fast first load (2026-10-12 evening, invent60: "i want first load to be fast ... go right in and start playing while other things start loading")
 
-Ken's words: QOL mods and tweakers load fast; custom sosigs and T&H characters can load later while he is already in the
+invent60's words: QOL mods and tweakers load fast; custom sosigs and T&H characters can load later while he is already in the
 indoor range. Built on branch `probe`, all three parts work with the probe switched off (not run that way yet).
 
 ### 1. Fast DLL lookup (`[Speed] FastDllLookup`, default on)
@@ -133,7 +133,7 @@ starting), range load 13.6 s.
 
 ## 2026-10-13: menu never shown, warm DLL read, sosig models on demand
 
-Ken (verbatim): "i said no need to spawn in menu. skip it entirely and spawn in your configured map." and
+invent60 (verbatim): "i said no need to spawn in menu. skip it entirely and spawn in your configured map." and
 "Do we really have to load every single custom sosig while we test guns in the indoor range? Doesn't matter where we
 are. I'm pretty sure I started with saying on demand and memory management. Same for everything else."
 
@@ -148,13 +148,13 @@ are. I'm pretty sure I started with saying on demand and memory management. Same
   pack list is trimmed to the selected pack during Awake and the rest get empty entries filled by its own LoadModel
   on first use (TryAttachProxy / SelectModel). Measured: "loaded 0 model addons", no 9 s stop. The fill path (picking
   the pack in the wrist menu) has not been run in the game.
-- Controllers not moving in Ken's 00:23 run: SteamVR log shows Steam Link switching to hand tracking at 5 min 12 s
+- Controllers not moving in invent60's 00:23 run: SteamVR log shows Steam Link switching to hand tracking at 5 min 12 s
   ("Switched active controller driver to: 1"); the game then logs 4 IPCError lines a frame. Why Quest switched: not traced.
-- Next, by Ken's priority: items on demand and memory (OtherLoader's 730 bundles: 5 -> 32 GB commit, the lag in the map).
+- Next, by invent60's priority: items on demand and memory (OtherLoader's 730 bundles: 5 -> 32 GB commit, the lag in the map).
 
 ## 2026-10-13 (night): on demand, measured with the in-game test driver
 
-Ken: "go on. i let u keep testing on your own. load maps. spawn weapons. spawn attachments. spawn modded content and
+invent60: "go on. i let u keep testing on your own. load maps. spawn weapons. spawn attachments. spawn modded content and
 maps. spawn sosigs. test if the on demand thing works." and "Might wanna clean up scene, clear guns, etc too" (test
 scripts now `clear` after their spawns).
 
@@ -183,7 +183,7 @@ What the memory was (new2, IndoorRange_Updated, nobody in the headset):
   textures are dropped afterwards). Second spawn 24 ms. Needs part-level loading in/around ModulWorkshop_Optimizer.
 - NOT checked: how it looks. Nobody has seen the item spawner or a gun in the headset with the governors on.
 
-## 2026-10-13 request: loading window, ModulWorkshop_Optimizer, lag survey (Ken, verbatim)
+## 2026-10-13 request: loading window, ModulWorkshop_Optimizer, lag survey (invent60, verbatim)
 
 "When loading things have a small window that scales horizontally to the text. Make it say what it's loading and from
 what mod. And if it's like you have to load a lot of things have like idk loading smth from smth 5/24, In case you have
@@ -214,7 +214,7 @@ causes; fixes that work for any profile.
   its `LoadAndRegisterBundleAsync` routine (unchanged inside) to name and count its loads, and `[Speed] BoostSpawnLoads`
   raises background loading to Normal while a spawn waits for them. One ModulAR15, 48 bundles: 65 s at the game's
   setting, 57 s at Normal (26-45 fps), 48 s at High (14-46 fps); Normal is the default.
-  AT PACKAGING: add its Thunderstore dependency string to manifest.json; nothing about it in README (Ken's wish).
+  AT PACKAGING: add its Thunderstore dependency string to manifest.json; nothing about it in README (invent60's wish).
   Still open: loading only the bundles of the parts on the gun (the rest when the workshop UI asks) would remove most of
   those 57 s; that needs part-name -> bundle data the optimizer's cache does not hold.
 - **Lag profiler** (test step `profile 20 label`, `src/LagProfiler.cs`): times every mod component's per-frame methods
@@ -230,7 +230,7 @@ causes; fixes that work for any profile.
   sosigs (was 2.92); frame 14.2 ms (was 15.7).
 - Not done yet from the request: what modded *models* cost in view (triangles, materials, lights per item).
 
-## 2026-10-13 request: unload setting, load only what is needed (Ken, verbatim)
+## 2026-10-13 request: unload setting, load only what is needed (invent60, verbatim)
 
 "have settings to unload things or not. on by default. unload by like if a mod is just sitting there, user spawned its
 guns to load it but delete the guns and anything else from that mod from the scene so now its just sitting for a

@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Repo root: `C:\Users\Hp\Desktop\FastLoad_Source` (bash: `/c/Users/Hp/Desktop/FastLoad_Source`). All paths below are relative to it. Branch `main`.
-- Plugin GUID `ken.h3vr.fastload`, name `FastLoad`, version `0.1.0`. Patcher assembly `FastLoadPatcher`, namespace `FastLoad.Early`. Plugin namespace `FastLoad`.
+- Plugin GUID `invent60.h3vr.fastload`, name `FastLoad`, version `0.1.0`. Patcher assembly `FastLoadPatcher`, namespace `FastLoad.Early`. Plugin namespace `FastLoad`.
 - Game runtime is Mono with the .NET 3.5 class library. Code compiled for `net46` can bind to members the game does not have. Never use any of these:
   - `lock (x) { }` — write `Monitor.Enter(x); try { } finally { Monitor.Exit(x); }`
   - `System.Action` (non-generic) — declare an own delegate type
@@ -27,12 +27,12 @@
 - Every number or date written to a file is formatted with `CultureInfo.InvariantCulture` (the PC's locale uses the Buddhist calendar).
 - The strings "CursedLL", "slow-mo", "slow motion", "timeScale" never appear in code, logs, config text or docs.
 - Every hook body and every `Update` step is wrapped in try/catch; a failure writes one `ERR` line and switches that hook group off. Nothing ever throws into another mod's call.
-- Never enable, disable, rename or move any other mod's files in a Gale profile. The only files this plan writes inside a profile are `BepInEx/plugins/FastLoad/FastLoad.dll`, `BepInEx/patchers/FastLoad/FastLoadPatcher.dll`, and at run time `BepInEx/FastLoad/*` and `BepInEx/config/ken.h3vr.fastload.cfg`.
+- Never enable, disable, rename or move any other mod's files in a Gale profile. The only files this plan writes inside a profile are `BepInEx/plugins/FastLoad/FastLoad.dll`, `BepInEx/patchers/FastLoad/FastLoadPatcher.dll`, and at run time `BepInEx/FastLoad/*` and `BepInEx/config/invent60.h3vr.fastload.cfg`.
 - Deploy target is the Gale profile `new2` only: `C:\Users\Hp\AppData\Roaming\com.kesomannen.gale\h3vr\profiles\new2`. Deploy only through `tools/deploy.sh`.
 - No manifest, README, CHANGELOG or version bump in this plan (no Thunderstore package yet).
 - Commits: one per task, message in normal English, ending with the trailer line `Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>`.
 - Config descriptions carry their own example value (see Task 9).
-- Do not launch the game. The in-game run is Ken's (Task 10).
+- Do not launch the game. The in-game run is invent60's (Task 10).
 
 ## Review Focus
 
@@ -210,7 +210,7 @@ using BepInEx;
 
 namespace FastLoad
 {
-    [BepInPlugin("ken.h3vr.fastload", "FastLoad", "0.1.0")]
+    [BepInPlugin("invent60.h3vr.fastload", "FastLoad", "0.1.0")]
     public class Plugin : BaseUnityPlugin
     {
         private void Awake()
@@ -547,7 +547,7 @@ namespace FastLoad.Tests
             T.Group("CfgPeek");
             string cfg =
                 "## Settings file was created by plugin FastLoad v0.1.0\r\n" +
-                "## Plugin GUID: ken.h3vr.fastload\r\n\r\n" +
+                "## Plugin GUID: invent60.h3vr.fastload\r\n\r\n" +
                 "[Other]\r\n\r\nEnabled = true\r\n\r\n" +
                 "[Probe]\r\n\r\n" +
                 "## Turns the whole probe off.\r\n# Setting type: Boolean\r\n# Default value: true\r\n" +
@@ -1893,7 +1893,7 @@ git commit -m "Add bundle ledger and Windows memory reader" -m "Co-Authored-By: 
   - `static class HookGate { static void Go(); }`
   - Timeline kinds written here: `RUN` (once), `LOG` (every log event), `PHS` (a phase mark), `ERR`.
 
-No unit tests in this task: these four files are glue over BepInEx and Unity types that the test project cannot load. Their logic lives in the tested `Pure/` files. They are verified by the build, the runtime check, and Ken's run in Task 10.
+No unit tests in this task: these four files are glue over BepInEx and Unity types that the test project cannot load. Their logic lives in the tested `Pure/` files. They are verified by the build, the runtime check, and invent60's run in Task 10.
 
 - [ ] **Step 1: Write the facade**
 
@@ -2055,7 +2055,7 @@ namespace FastLoad.Early
     {
         public static IEnumerable<string> TargetDLLs { get; } = new string[0];
 
-        private const string ConfigFile = "ken.h3vr.fastload.cfg";
+        private const string ConfigFile = "invent60.h3vr.fastload.cfg";
         private const string RestartMarker = "ACTIONCAM_GFXJOBS_RESTART";
 
         public static void Patch(AssemblyDefinition assembly)
@@ -2234,7 +2234,7 @@ namespace FastLoad.Early
             s_installed = true;
             try
             {
-                Harmony h = new Harmony("ken.h3vr.fastload.early");
+                Harmony h = new Harmony("invent60.h3vr.fastload.early");
                 Type ab = typeof(AssetBundle);
                 Type str = typeof(string);
                 Type u32 = typeof(uint);
@@ -3607,7 +3607,7 @@ git commit -m "Add report builder" -m "Co-Authored-By: Claude Opus 5.5 (1M conte
 
 **Interfaces:**
 - Consumes: `Timeline`, `Clock`, `Phases`, `Phase`, `FrameSources`, `BundleLedger`, `BundleHooks`, `Memory`, `RunFiles`, `LineFormat` (patcher); `FrameLog`, `MemLog`, `MemSample`, `QuietTracker`, `ReportInput`, `ReportBuilder` (plugin).
-- Produces: the deployed mod. Timeline kinds added here: `HIT`, `SEC`, `SCN`, `PHS` (quiet). Files written at run time: `BepInEx/FastLoad/report_<stamp>.txt`, `BepInEx/config/ken.h3vr.fastload.cfg`.
+- Produces: the deployed mod. Timeline kinds added here: `HIT`, `SEC`, `SCN`, `PHS` (quiet). Files written at run time: `BepInEx/FastLoad/report_<stamp>.txt`, `BepInEx/config/invent60.h3vr.fastload.cfg`.
 
 No unit test: glue over Unity. Verified by build, runtime check, deploy, and Task 10.
 
@@ -3866,12 +3866,12 @@ namespace FastLoad
     /// The preloader half (FastLoadPatcher.dll) has already started the clock, the timeline file and the bundle
     /// hooks by the time this loads.
     /// </summary>
-    [BepInPlugin("ken.h3vr.fastload", "FastLoad", "0.1.0")]
+    [BepInPlugin("invent60.h3vr.fastload", "FastLoad", "0.1.0")]
     public class Plugin : BaseUnityPlugin
     {
         private void Awake()
         {
-            // Bound first, always: this writes ken.h3vr.fastload.cfg, which the preloader half reads at the next start.
+            // Bound first, always: this writes invent60.h3vr.fastload.cfg, which the preloader half reads at the next start.
             ConfigEntry<bool> enabled = Config.Bind("Probe", "Enabled", true,
                 "Turns the whole probe off: no hooks, no sampler, no files. Takes effect at the next game start. Example: false");
             ConfigEntry<int> hitchMs = Config.Bind("Probe", "HitchMs", 25,
@@ -3956,7 +3956,7 @@ Expected: `FastLoad.dll` (and `.pdb`); no `FastLoadPatcher.dll`, no `BepInEx.dll
 - [ ] **Step 6: Make sure the game is not running, then deploy**
 
 Run: `tasklist | grep -i h3vr.exe || echo "not running"`
-Expected: `not running`. If the game is running, stop here and ask Ken to close it; do not kill it.
+Expected: `not running`. If the game is running, stop here and ask invent60 to close it; do not kill it.
 
 Run: `bash tools/deploy.sh`
 Expected last line: `deployed to new2`.
@@ -3984,7 +3984,7 @@ git commit -m "Add plugin, frame sampler and report job; deploy probe to new2" -
 
 ---
 
-### Task 10: Ken's run and reading the results
+### Task 10: invent60's run and reading the results
 
 **Files:**
 - Modify: `docs/PROJECT.md` (status + findings)
@@ -3994,11 +3994,11 @@ git commit -m "Add plugin, frame sampler and report job; deploy probe to new2" -
 - Consumes: the deployed mod; the files it writes under `new2/BepInEx/FastLoad/`.
 - Produces: the numbers that piece 2's design starts from.
 
-This task needs Ken. Nothing before this point is called working.
+This task needs invent60. Nothing before this point is called working.
 
-- [ ] **Step 1: Hand Ken the test**
+- [ ] **Step 1: Hand invent60 the test**
 
-Tell Ken exactly this, and that the mod only measures:
+Tell invent60 exactly this, and that the mod only measures:
 
 1. Launch `new2` the usual way.
 2. Stand in the main menu until it feels smooth, then about 15 s more.
@@ -4019,7 +4019,7 @@ grep -a -E " (RUN|HKS|ERR|PHS) " "$R" | head -40
 for k in LOG BUN HIT SEC SCN; do echo "$k $(grep -a -c " $k  " "$R")"; done
 ```
 
-Expected: a `RUN` line with `restartOnLaunch=yes`; one `HKS` line reading `managed, 12 of 12 hooks on`; no `ERR` lines; `PHS` lines for the phases; non-zero counts for `LOG`, `BUN`, `SEC`, `SCN`. Any `ERR` line or a hook count below 12 is reported to Ken with the exact text before anything else.
+Expected: a `RUN` line with `restartOnLaunch=yes`; one `HKS` line reading `managed, 12 of 12 hooks on`; no `ERR` lines; `PHS` lines for the phases; non-zero counts for `LOG`, `BUN`, `SEC`, `SCN`. Any `ERR` line or a hook count below 12 is reported to invent60 with the exact text before anything else.
 
 Also confirm the game's own log shows the mod loaded and nothing new broke:
 
@@ -4030,7 +4030,7 @@ grep -a -n -E "FastLoad" "$L" | head -20
 
 Expected: `Loaded 1 patcher method from [FastLoadPatcher 1.0.0.0]`, `[Info   :FastLoad Patcher] Probe on: ...`, `Loading [FastLoad 0.1.0]`, `[Info   :  FastLoad] Probe on. ...`. No exception mentioning `FastLoad`.
 
-Known failure shape to look for: the patcher line says `Probe on` but the plugin line says `Probe is off for this run (the preloader half did not start...)`, and the run file has `LOG`/`BUN` lines but no `HIT`/`SEC` lines. That means the game loaded `FastLoadPatcher.dll` a second time for the plugin, with its own empty `Timeline`. Fix: in `Entry.Initialize` store the live objects with `AppDomain.CurrentDomain.SetData("FastLoad.Timeline", ...)`, and have the plugin read them from there instead of from the static fields. Report it to Ken as a probe bug with that cause, fix, redeploy, and ask for one more run.
+Known failure shape to look for: the patcher line says `Probe on` but the plugin line says `Probe is off for this run (the preloader half did not start...)`, and the run file has `LOG`/`BUN` lines but no `HIT`/`SEC` lines. That means the game loaded `FastLoadPatcher.dll` a second time for the plugin, with its own empty `Timeline`. Fix: in `Entry.Initialize` store the live objects with `AppDomain.CurrentDomain.SetData("FastLoad.Timeline", ...)`, and have the plugin read them from there instead of from the static fields. Report it to invent60 as a probe bug with that cause, fix, redeploy, and ask for one more run.
 
 - [ ] **Step 3: Read the report against the spec's six questions**
 
@@ -4041,9 +4041,9 @@ Read the newest `report_*.txt` in full. For each question write the answer with 
 3. Which bundles and mods cost the most time and memory (sections 4 and 5).
 4. Which bundles were loaded and never used (section 6).
 5. How close process and system came to the commit limit, and when (section 7).
-6. What the AR2 spawn pulled in (section 8, the burst at the time Ken spawned it).
+6. What the AR2 spawn pulled in (section 8, the burst at the time invent60 spawned it).
 
-Check the cross-check line in section 1. If the loaders reported many more bundles than the hooks saw, say so, and propose one more run with `NativeHooks = true` (Ken decides; it adds native detours).
+Check the cross-check line in section 1. If the loaders reported many more bundles than the hooks saw, say so, and propose one more run with `NativeHooks = true` (invent60 decides; it adds native detours).
 
 - [ ] **Step 4: Write the results down**
 
@@ -4051,11 +4051,11 @@ Create `docs/PROBE-RESULTS-<date>.md` with: the run file name, the six answers w
 
 Update `docs/PROJECT.md`: piece 1 status to `done, results in docs/PROBE-RESULTS-<date>.md`.
 
-- [ ] **Step 5: Commit and report to Ken**
+- [ ] **Step 5: Commit and report to invent60**
 
 ```bash
 git add -A
 git commit -m "Record first probe run results" -m "Co-Authored-By: Claude Opus 5.5 (1M context) <noreply@anthropic.com>"
 ```
 
-Report to Ken in a few lines: the six answers, then ask to start the design of piece 2 (menu-first scheduler).
+Report to invent60 in a few lines: the six answers, then ask to start the design of piece 2 (menu-first scheduler).

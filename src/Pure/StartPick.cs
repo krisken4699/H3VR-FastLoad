@@ -146,7 +146,7 @@ namespace FastLoad
         {
             StringBuilder sb = new StringBuilder(8192);
             sb.AppendLine("FastLoad: every scene the game can start in.");
-            sb.AppendLine("Copy one name into BepInEx/config/ken.h3vr.fastload.cfg:   [Start]   Scene = <name>");
+            sb.AppendLine("Copy one name into BepInEx/config/invent60.h3vr.fastload.cfg:   [Start]   Scene = <name>");
             sb.AppendLine("Capital letters do not matter. Leave Scene empty to start in the main menu as usual.");
             sb.AppendLine();
             sb.AppendLine("== The game's own scenes (" + gameScenes.Count + ") ==");

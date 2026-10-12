@@ -1,6 +1,6 @@
 # FastLoad piece 1: load timeline + memory probe
 
-Date: 2026-10-12. Design approved by Ken in chat the same day. Project brief: `docs/PROJECT.md`.
+Date: 2026-10-12. Design approved by invent60 in chat the same day. Project brief: `docs/PROJECT.md`.
 
 ## Purpose
 
@@ -11,7 +11,7 @@ The probe changes no game behaviour. It only observes and writes files.
 
 ## Success
 
-After one test run by Ken, the files answer all of these:
+After one test run by invent60, the files answer all of these:
 
 1. How long each start-up phase takes, in wall-clock time.
 2. Which frames in the main menu were slow, and what was loading during each one.
@@ -23,7 +23,7 @@ After one test run by Ken, the files answer all of these:
 ## Mod
 
 - Name `FastLoad`. Repo `C:\Users\Hp\Desktop\FastLoad_Source`, branch `main`.
-- Plugin GUID `ken.h3vr.fastload`. Patcher assembly `FastLoadPatcher`.
+- Plugin GUID `invent60.h3vr.fastload`. Patcher assembly `FastLoadPatcher`.
 - `net46`, C# 8, references taken from the Gale `new2` profile and the game's `Managed` folder, same layout as
   `ActionCam_Source` (`FastLoad.csproj` at the root with `patcher\**` excluded, `patcher/FastLoadPatcher.csproj`).
 - Deploy target: `new2`, to `BepInEx/plugins/FastLoad/` and `BepInEx/patchers/FastLoad/`. Deploy goes through a
@@ -103,7 +103,7 @@ thread for 5 ms or more), `BUN unload`, and one `HKS` line saying which mode is 
 
 Cross-check, always printed in the report: the number of bundles the hooks saw next to the number the loaders
 reported in their own log lines (OtherLoaderPatched "Completed loading bundle", ModulWorkshop Optimizer "On-demand
-async loading modular bundle"). A large gap means loads are being missed and is reported to Ken, never hidden.
+async loading modular bundle"). A large gap means loads are being missed and is reported to invent60, never hidden.
 
 ### 3. Sampler
 
@@ -162,7 +162,7 @@ printed as "not seen", never guessed.
 
 ## Config
 
-`BepInEx/config/ken.h3vr.fastload.cfg`:
+`BepInEx/config/invent60.h3vr.fastload.cfg`:
 
 | Key | Default | Meaning |
 |-----|---------|---------|
@@ -181,7 +181,7 @@ because BepInEx config objects are not available in the preloader.
 - If the output folder or file cannot be opened, the probe logs one error and stays off for that run.
 - The probe never throws into another mod's call.
 
-## Rules carried over from Ken's other H3VR mods
+## Rules carried over from invent60's other H3VR mods
 
 - No `System.Action` (non-generic) anywhere: own delegate types. Runtime check before every deploy.
 - All timing on real time (`Stopwatch`); nothing reads the game's time scale.
@@ -197,7 +197,7 @@ Build checks, by me:
 - Unit tests (plain .NET test project, no Unity) for the parts with logic: timeline line format, phase matcher
   on lines copied from the 2026-10-09 `LogOutput.log`, burst grouping, never-used list, run pruning.
 
-In game, by Ken, once:
+In game, by invent60, once:
 
 1. Launch `new2`.
 2. Stand in the menu until it feels smooth.

@@ -69,7 +69,7 @@ namespace FastLoad.Tests
             T.True(list.Contains("Scene = IndoorRange") && list.Contains("Scene = ArizonaTargets"), "list has the game scenes ready to paste");
             T.True(list.IndexOf("Scene = ArizonaTargets") < list.IndexOf("Scene = IndoorRange"), "game scenes are sorted");
             T.True(list.Contains("Scene = abass20.junglevalley") && list.Contains("name: JungleValley") && list.Contains("mode: takeandhold"), "list has modded maps with name and mode");
-            T.True(list.Contains("ken.h3vr.fastload.cfg"), "list says where to put the name");
+            T.True(list.Contains("invent60.h3vr.fastload.cfg"), "list says where to put the name");
             T.True(StartPick.ListText(game, new List<MapEntry>(), false).Contains("Atlas is not installed"), "no loader is said plainly");
         }
     }

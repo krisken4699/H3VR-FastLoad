@@ -45,7 +45,7 @@ namespace FastLoad.Early
             if (LaterList.Wanted.Count == 0) return;
             try
             {
-                Harmony h = new Harmony("ken.h3vr.fastload.later");
+                Harmony h = new Harmony("invent60.h3vr.fastload.later");
                 MethodInfo add = typeof(GameObject).GetMethod("AddComponent", Any, null, new Type[] { typeof(Type) }, null);
                 if (ReferenceEquals(add, null))
                 {

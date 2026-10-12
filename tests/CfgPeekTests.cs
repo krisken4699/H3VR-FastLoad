@@ -9,7 +9,7 @@ namespace FastLoad.Tests
             T.Group("CfgPeek");
             string cfg =
                 "## Settings file was created by plugin FastLoad v0.1.0\r\n" +
-                "## Plugin GUID: ken.h3vr.fastload\r\n\r\n" +
+                "## Plugin GUID: invent60.h3vr.fastload\r\n\r\n" +
                 "[Other]\r\n\r\nEnabled = true\r\n\r\n" +
                 "[Probe]\r\n\r\n" +
                 "## Turns the whole probe off.\r\n# Setting type: Boolean\r\n# Default value: true\r\n" +

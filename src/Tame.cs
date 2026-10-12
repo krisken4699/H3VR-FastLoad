@@ -61,7 +61,7 @@ namespace FastLoad
             m_nextPass = 60.0;
             try
             {
-                if (m_harmony == null) m_harmony = new Harmony("ken.h3vr.fastload.tame");
+                if (m_harmony == null) m_harmony = new Harmony("invent60.h3vr.fastload.tame");
                 if (Rebinders) FindRebinders();
                 ApplyThrottles();
             }

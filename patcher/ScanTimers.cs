@@ -21,7 +21,7 @@ namespace FastLoad.Early
         {
             try
             {
-                Harmony h = new Harmony("ken.h3vr.fastload.scantimers");
+                Harmony h = new Harmony("invent60.h3vr.fastload.scantimers");
                 Type at = typeof(AccessTools);
                 int on = 0;
                 on += Patch(h, at.GetMethod("TypeByName", Any, null, new Type[] { typeof(string) }, null), "NamePost");
