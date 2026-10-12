@@ -12,6 +12,7 @@ namespace FastLoad.Tests
             CfgPeekTests.Run();
             RunFilesTests.Run();
             PhasesTests.Run();
+            BundleLedgerTests.Run();
 
             Console.WriteLine(T.Passed + " passed, " + T.Failed + " failed");
             return T.Failed > 0 ? 1 : 0;
