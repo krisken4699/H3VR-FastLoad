@@ -40,6 +40,8 @@ namespace FastLoad.Early
 
         private static readonly List<Pending> s_pending = new List<Pending>();
         private static readonly List<Live> s_live = new List<Live>();
+        /// <summary>Records a load prefix opened whose postfix has not run yet.</summary>
+        private static readonly List<BundleRecord> s_opened = new List<BundleRecord>();
         private static bool s_installed;
         private static bool s_loadsOff;
         private static bool s_assetsOff;
@@ -121,24 +123,31 @@ namespace FastLoad.Early
 
         // ---- bundle loads ------------------------------------------------------------------------------------
 
+        // The methods Harmony calls are thin shells: whatever goes wrong behind them, even the runtime failing to
+        // compile the method behind, stays here and never reaches the game's or another mod's call.
+
         private static void FilePre(string path, out Call __state)
         {
-            __state = Open(path, -1, false);
+            __state = new Call();
+            try { __state = Open(path, -1, false); } catch (Exception) { }
         }
 
         private static void FileAsyncPre(string path, out Call __state)
         {
-            __state = Open(path, -1, true);
+            __state = new Call();
+            try { __state = Open(path, -1, true); } catch (Exception) { }
         }
 
         private static void MemPre(byte[] binary, out Call __state)
         {
-            __state = Open(null, binary != null ? binary.Length : 0, false);
+            __state = new Call();
+            try { __state = Open(null, binary != null ? binary.Length : 0, false); } catch (Exception) { }
         }
 
         private static void MemAsyncPre(byte[] binary, out Call __state)
         {
-            __state = Open(null, binary != null ? binary.Length : 0, true);
+            __state = new Call();
+            try { __state = Open(null, binary != null ? binary.Length : 0, true); } catch (Exception) { }
         }
 
         private static Call Open(string path, long memorySize, bool isAsync)
@@ -147,7 +156,7 @@ namespace FastLoad.Early
             if (s_loadsOff) return c;
             try
             {
-                Sweep();
+                SweepPending();
                 long size = memorySize;
                 if (path != null)
                 {
@@ -162,8 +171,9 @@ namespace FastLoad.Early
                     }
                 }
                 c.Rec = BundleLedger.Begin(path, size, Caller(), isAsync, Clock.NowMs, Memory.Commit());
+                s_opened.Add(c.Rec);
                 Timeline.Write("BUN", "load-start name=" + c.Rec.Name + " mod=" + c.Rec.Mod + " size=" + LineFormat.Mb(size)
-                    + " by=" + c.Rec.By + " async=" + (isAsync ? "1" : "0"));
+                    + " by=" + c.Rec.By + " async=" + (isAsync ? "1" : "0") + " path=" + (path ?? "(memory)"));
                 c.T0 = Stopwatch.GetTimestamp();
             }
             catch (Exception e)
@@ -176,9 +186,20 @@ namespace FastLoad.Early
 
         private static void SyncPost(AssetBundle __result, Call __state)
         {
+            try { SyncDone(__result, __state); } catch (Exception) { }
+        }
+
+        private static void AsyncPost(AssetBundleCreateRequest __result, Call __state)
+        {
+            try { AsyncStarted(__result, __state); } catch (Exception) { }
+        }
+
+        private static void SyncDone(AssetBundle __result, Call __state)
+        {
             if (__state.Rec == null) return;
             try
             {
+                s_opened.Remove(__state.Rec);
                 double main = Elapsed(__state.T0);
                 bool ok = __result != null;
                 Close(__state.Rec, ok ? __result : null, main);
@@ -189,11 +210,12 @@ namespace FastLoad.Early
             }
         }
 
-        private static void AsyncPost(AssetBundleCreateRequest __result, Call __state)
+        private static void AsyncStarted(AssetBundleCreateRequest __result, Call __state)
         {
             if (__state.Rec == null) return;
             try
             {
+                s_opened.Remove(__state.Rec);
                 __state.Rec.MainMs += Elapsed(__state.T0);
                 if (__result == null)
                 {
@@ -226,8 +248,32 @@ namespace FastLoad.Early
                 + "ms commit=" + LineFormat.SignedMb(rec.CommitGrowth) + " ok=" + (ok ? "1" : "0"));
         }
 
-        /// <summary>Closes async loads that have finished. Cheap when nothing is pending.</summary>
+        /// <summary>
+        /// Once per frame, from the sampler: closes finished async loads, and closes as failed any load whose call
+        /// never came back to its postfix (the engine call threw). Between two frames no load call is in progress,
+        /// so anything a prefix opened and no postfix took is an orphan.
+        /// </summary>
         public static void Sweep()
+        {
+            SweepPending();
+            if (s_opened.Count == 0) return;
+            try
+            {
+                for (int i = 0; i < s_opened.Count; i++)
+                {
+                    BundleRecord r = s_opened[i];
+                    BundleLedger.Fail(r, Clock.NowMs, Memory.Commit());
+                    Timeline.Write("BUN", "load-end name=" + r.Name + " mod=" + r.Mod + " ok=0 (the load call threw)");
+                }
+            }
+            catch (Exception)
+            {
+            }
+            s_opened.Clear();
+        }
+
+        /// <summary>Closes async loads that have finished. Cheap when nothing is pending.</summary>
+        private static void SweepPending()
         {
             if (s_pending.Count == 0) return;
             try
@@ -282,12 +328,12 @@ namespace FastLoad.Early
 
         private static void NamedAssetPost(AssetBundle __instance, string name, long __state)
         {
-            Used(__instance, name, __state);
+            try { Used(__instance, name, __state); } catch (Exception) { }
         }
 
         private static void AllAssetsPost(AssetBundle __instance, long __state)
         {
-            Used(__instance, "(all)", __state);
+            try { Used(__instance, "(all)", __state); } catch (Exception) { }
         }
 
         private static void Used(AssetBundle bundle, string asset, long t0)
@@ -299,6 +345,13 @@ namespace FastLoad.Early
                 int now = Clock.NowMs;
                 int id = bundle.GetInstanceID();
                 BundleRecord r = BundleLedger.Use(id, now);
+                if (r == null && s_pending.Count > 0)
+                {
+                    // An async load is only tied to its bundle when it is closed. A caller that uses the bundle the
+                    // moment the load finishes (or forces it to finish) gets here first: close finished loads, look again.
+                    SweepPending();
+                    r = BundleLedger.Use(id, now);
+                }
                 if (r == null) r = BundleLedger.Adopt(id, bundle.name, now);
                 if (ms >= SlowAssetMs)
                     Timeline.Write("BUN", "asset bundle=" + r.Name + " mod=" + r.Mod + " asset=" + asset + " main=" + LineFormat.N0(ms) + "ms");
@@ -322,6 +375,16 @@ namespace FastLoad.Early
             if (s_loadsOff) return;
             s_loadsOff = true;
             Timeline.Write("ERR", "bundle load hooks switched off (" + where + "): " + e.GetType().Name + ": " + e.Message);
+            try
+            {
+                s_pending.Clear();
+                s_opened.Clear();
+                int closed = BundleLedger.FailAllFlying(Clock.NowMs, Memory.Commit());
+                if (closed > 0) Timeline.Write("ERR", closed + " load(s) that were in flight are recorded as failed");
+            }
+            catch (Exception)
+            {
+            }
         }
 
         /// <summary>The first assembly on the call stack that is not the engine, a patching library or this mod.</summary>

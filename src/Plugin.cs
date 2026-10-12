@@ -47,6 +47,9 @@ namespace FastLoad
                 SceneManager.sceneLoaded += OnSceneLoaded;
                 SceneManager.activeSceneChanged += OnActiveSceneChanged;
 
+                // A run that dies while plugins are still loading leaves a report too.
+                ReportJob.Kick();
+
                 Logger.LogInfo("Probe on. Timeline: " + RunFiles.RunPath(Timeline.Dir, Timeline.Stamp) + " | bundle hooks: " + BundleHooks.Mode);
             }
             catch (Exception e)

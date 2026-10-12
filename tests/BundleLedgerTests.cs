@@ -88,6 +88,20 @@ namespace FastLoad.Tests
             T.Eq(0, BundleLedger.InFlight, "reset clears in flight");
             T.Eq("", BundleLedger.InFlightNames(3), "no names when nothing loads");
 
+            // Review I1: when the hooks give up, nothing may stay "loading" for the rest of the run.
+            BundleRecord s1 = BundleLedger.Begin(@"C:\x\plugins\M\stuck1", 1, "L", true, 100, 10 * MB);
+            BundleRecord s2 = BundleLedger.Begin(@"C:\x\plugins\M\stuck2", 1, "L", false, 110, 10 * MB);
+            T.Eq(2, BundleLedger.FailAllFlying(500, 12 * MB), "fail all flying returns how many it closed");
+            T.Eq(0, BundleLedger.InFlight, "nothing left in flight");
+            T.True(s1.Done && !s1.Ok && s2.Done && !s2.Ok, "stuck records are closed as failed");
+            T.Eq(400, s1.WallMs, "stuck record gets an end time");
+            T.Eq(0, BundleLedger.FailAllFlying(600, 0), "nothing to fail the second time");
+            BundleRecord one = BundleLedger.Begin(@"C:\x\plugins\M\orphan", 1, "L", false, 700, 0);
+            BundleLedger.Fail(one, 705, 0);
+            T.True(one.Done && !one.Ok && BundleLedger.InFlight == 0, "a single orphan can be failed");
+            T.Eq(0, BundleLedger.LoadedCount, "failed records never count as loaded");
+            BundleLedger.Reset();
+
             T.Group("Memory");
             long commit, ws, free, limit;
             T.True(Memory.Read(out commit, out ws, out free, out limit), "memory read works on this PC");

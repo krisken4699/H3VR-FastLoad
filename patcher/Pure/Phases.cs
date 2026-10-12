@@ -41,6 +41,9 @@ namespace FastLoad.Early
         /// <summary>How many bundle loads the loaders themselves reported in their log lines (cross-check for the hooks).</summary>
         public static int LoaderBundleLines;
 
+        /// <summary>Index of the phase marked most recently; -1 = none yet.</summary>
+        public static int LastMarked = -1;
+
         private static int[] NewMarks()
         {
             int[] a = new int[Count];
@@ -57,6 +60,7 @@ namespace FastLoad.Early
                 for (int i = 0; i < Count; i++) s_at[i] = -1;
                 s_at[(int)Phase.ProcessStart] = 0;
                 LoaderBundleLines = 0;
+                LastMarked = -1;
             }
             finally
             {
@@ -90,6 +94,7 @@ namespace FastLoad.Early
             {
                 if (s_at[(int)p] >= 0) return false;
                 s_at[(int)p] = ms;
+                LastMarked = (int)p;
                 return true;
             }
             finally
@@ -123,8 +128,9 @@ namespace FastLoad.Early
             }
             if (string.Equals(source, "ModulWorkshop_Optimizer", StringComparison.Ordinal))
             {
-                if (text.IndexOf("On-demand async loading modular bundle", StringComparison.Ordinal) >= 0
-                    || text.IndexOf("On-demand loading modular bundle", StringComparison.Ordinal) >= 0)
+                // The mod writes "On-demand async loading modular bundle" and "On-demand SYNC loading modular bundle".
+                if (text.IndexOf("On-demand", StringComparison.Ordinal) >= 0
+                    && text.IndexOf("loading modular bundle", StringComparison.Ordinal) >= 0)
                     Interlocked.Increment(ref LoaderBundleLines);
             }
             return false;

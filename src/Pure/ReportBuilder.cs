@@ -72,8 +72,17 @@ namespace FastLoad
             sb.AppendLine("plugins loaded: " + (inp.PluginCount < 0 ? "unknown" : inp.PluginCount.ToString()));
             sb.AppendLine("restart on launch: " + (inp.RestartCostMs < 0 ? "no" : "yes, cost " + inp.RestartCostMs + " ms"));
             sb.AppendLine("bundle hooks: " + inp.HookMode);
-            sb.AppendLine("cross-check: hooks saw " + inp.Bundles.Count + " bundle loads, loaders reported " + inp.LoaderBundleLines
-                + " in their own log lines (a much higher loader number means loads are being missed)");
+            int seen = 0;
+            int unseen = 0;
+            for (int i = 0; i < inp.Bundles.Count; i++)
+            {
+                if (inp.Bundles[i].Mod == BundleLedger.UnseenMod) unseen++;
+                else seen++;
+            }
+            sb.AppendLine("cross-check: hooks saw " + seen + " bundle loads begin (finished, failed and still loading together); loaders reported "
+                + inp.LoaderBundleLines + " in their own log lines");
+            sb.AppendLine("             bundles used that were not seen loading: " + unseen
+                + " (each one is a load the hooks missed; a loader number far above the hook number means the same)");
         }
 
         private static void PhaseTable(StringBuilder sb, int[] at)
@@ -165,7 +174,7 @@ namespace FastLoad
             return "wall=" + LineFormat.Sec(r.WallMs).PadLeft(8) + " main=" + (LineFormat.N0(r.MainMs) + "ms").PadLeft(8)
                 + " commit=" + LineFormat.SignedMb(r.CommitGrowth).PadLeft(8) + " size=" + LineFormat.Mb(r.Size).PadLeft(7)
                 + " at=" + LineFormat.Sec(r.StartMs).PadLeft(8) + " uses=" + r.AssetCalls.ToString().PadLeft(5)
-                + "  " + r.Name + " | mod=" + r.Mod + " | by=" + r.By;
+                + "  " + r.Name + " | mod=" + r.Mod + " | by=" + r.By + " | path=" + (r.Path ?? "(memory)");
         }
 
         private static int ByWall(BundleRecord a, BundleRecord b)
@@ -274,11 +283,15 @@ namespace FastLoad
             }
             sb.AppendLine("commit = private memory this process has committed. system commit free = how much more Windows can hand out");
             sb.AppendLine("before allocations fail (RAM + page files - everything committed).");
+            sb.AppendLine("Samples are taken once a second from the moment this mod's plugin loads; earlier marks have their numbers on their PHS line in the run file.");
             MemSample m;
             for (int i = 0; i < Phases.Count; i++)
             {
                 if (at[i] < 0) continue;
-                if (MemLog.AtOrAfter(inp.Mem, at[i], out m)) sb.AppendLine(MemRow(m) + "  at: " + Phases.Names[i]);
+                if (MemLog.AtOrAfter(inp.Mem, at[i], out m) && m.AtMs >= at[i] && m.AtMs - at[i] <= 2000)
+                    sb.AppendLine(MemRow(m) + "  at: " + Phases.Names[i]);
+                else
+                    sb.AppendLine(LineFormat.Sec(at[i]).PadLeft(10) + " no sample at that time (see this mark's PHS line in the run file)  at: " + Phases.Names[i]);
             }
             if (MemLog.PeakCommit(inp.Mem, out m)) sb.AppendLine("peak commit: " + LineFormat.Mb(m.Commit) + " at " + LineFormat.Sec(m.AtMs));
             if (MemLog.LowestSysFree(inp.Mem, out m))
@@ -297,13 +310,21 @@ namespace FastLoad
             sb.AppendLine();
             sb.AppendLine("== 8. Spawn bursts ==");
             int quiet = at[(int)Phase.Quiet];
+            int from = quiet;
             if (quiet < 0)
             {
-                sb.AppendLine("quiet not seen: bursts are only counted after the menu went quiet");
-                return;
+                // A headset that drops one frame now and then never gives 10 clean seconds. Do not lose the bursts for it.
+                from = Math.Max(at[(int)Phase.MenuLoaded], at[(int)Phase.OtherLoaderDone]);
+                if (from < 0)
+                {
+                    sb.AppendLine("quiet not seen, and neither the menu nor the end of item loading: no point to count bursts from");
+                    return;
+                }
+                sb.AppendLine("quiet not seen: bursts are counted from " + LineFormat.Sec(from)
+                    + " (the later of menu loaded / OtherLoader all items loaded), so the first ones may still be start-up loading");
             }
-            sb.AppendLine("Bundle loads after quiet that began within " + (Bursts.GapMs / 1000) + " s of each other. One gun spawn or one map load is one burst.");
-            List<Burst> bursts = Bursts.Find(inp.Bundles, quiet, inp.Frames, inp.HitchMs);
+            sb.AppendLine("Bundle loads after that point that began within " + (Bursts.GapMs / 1000) + " s of each other. One gun spawn or one map load is one burst.");
+            List<Burst> bursts = Bursts.Find(inp.Bundles, from, inp.Frames, inp.HitchMs);
             if (bursts.Count == 0) sb.AppendLine("(none)");
             for (int i = 0; i < bursts.Count; i++)
             {

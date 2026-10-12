@@ -22,9 +22,24 @@ namespace FastLoad.Early
                 int now = Clock.NowMs;
                 if (Phases.SeeLog(source, text, now))
                 {
-                    Timeline.Write("PHS", "mark at " + now);
+                    // The frame sampler only exists once plugins have loaded: memory at the early marks is read here.
+                    long commit, ws, free, limit;
+                    Memory.Read(out commit, out ws, out free, out limit);
+                    int which = Phases.LastMarked;
+                    Timeline.Write("PHS", (which >= 0 ? Phases.Names[which] : "?") + " at " + now + " commit=" + LineFormat.Mb(commit)
+                        + " ws=" + LineFormat.Mb(ws) + " sysfree=" + LineFormat.Mb(free));
                     // Plugins start loading right after this line: hook bundle loading before any of their code runs.
-                    if (string.Equals(text, RunFiles.StartedMark, StringComparison.Ordinal)) HookGate.Go();
+                    if (string.Equals(text, RunFiles.StartedMark, StringComparison.Ordinal))
+                    {
+                        try
+                        {
+                            HookGate.Go();
+                        }
+                        catch (Exception hookError)
+                        {
+                            Timeline.Write("ERR", "bundle hooks not installed: " + hookError.GetType().Name + ": " + hookError.Message);
+                        }
+                    }
                 }
             }
             catch (Exception)

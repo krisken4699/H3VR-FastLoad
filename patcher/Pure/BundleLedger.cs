@@ -52,6 +52,9 @@ namespace FastLoad.Early
     /// <summary>The table of every bundle load seen this run. Safe from any thread.</summary>
     public static class BundleLedger
     {
+        /// <summary>The "mod" of a bundle that was first seen in use: its load happened where the hooks could not see.</summary>
+        public const string UnseenMod = "(not seen loading)";
+
         private static readonly object s_gate = new object();
         private static readonly List<BundleRecord> s_all = new List<BundleRecord>(1024);
         private static readonly Dictionary<int, BundleRecord> s_byId = new Dictionary<int, BundleRecord>();
@@ -133,6 +136,32 @@ namespace FastLoad.Early
             }
         }
 
+        /// <summary>Closes a load that will never report back (its call threw) as failed.</summary>
+        public static void Fail(BundleRecord r, int nowMs, long commit)
+        {
+            End(r, 0, false, nowMs, commit, 0);
+        }
+
+        /// <summary>
+        /// Closes every load still in flight as failed. Used when the hooks switch themselves off: a record left
+        /// "loading" forever would keep the menu from ever counting as quiet. Returns how many it closed.
+        /// </summary>
+        public static int FailAllFlying(int nowMs, long commit)
+        {
+            BundleRecord[] stuck;
+            Monitor.Enter(s_gate);
+            try
+            {
+                stuck = s_flying.ToArray();
+            }
+            finally
+            {
+                Monitor.Exit(s_gate);
+            }
+            for (int i = 0; i < stuck.Length; i++) End(stuck[i], 0, false, nowMs, commit, 0);
+            return stuck.Length;
+        }
+
         /// <summary>Counts one asset call on a known bundle. Null when the id is not known.</summary>
         public static BundleRecord Use(int bundleId, int nowMs)
         {
@@ -157,7 +186,7 @@ namespace FastLoad.Early
         {
             BundleRecord r = new BundleRecord();
             r.Name = name ?? "?";
-            r.Mod = "(not seen loading)";
+            r.Mod = UnseenMod;
             r.By = "?";
             r.StartMs = nowMs;
             r.EndMs = nowMs;

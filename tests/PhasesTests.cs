@@ -36,6 +36,10 @@ namespace FastLoad.Tests
             Phases.SeeLog("ModulWorkshop_Optimizer", "[BundleLoader] On-demand async loading modular bundle: C:\\x\\mw_ar2_plus", 200000);
             Phases.SeeLog("OtherLoaderPatched", "Spawning item by ItemSpawnerID 'AttIronBackup1'", 200100);
             T.Eq(2, Phases.LoaderBundleLines, "loader bundle lines counted");
+            // Review I2: the real log also has the sync wording.
+            Phases.SeeLog("ModulWorkshop_Optimizer", "[BundleLoader] On-demand SYNC loading modular bundle: C:/x/mw_tti_glock", 200200);
+            T.Eq(3, Phases.LoaderBundleLines, "sync on-demand loads are counted too");
+            T.Eq((int)Phase.Quiet, Phases.LastMarked, "the last phase marked is remembered");
 
             int[] snap = Phases.Snapshot();
             T.Eq(Phases.Count, snap.Length, "snapshot length");
@@ -48,6 +52,7 @@ namespace FastLoad.Tests
             Phases.Reset();
             T.Eq(-1, Phases.At(Phase.StratumDone), "reset clears marks");
             T.Eq(0, Phases.LoaderBundleLines, "reset clears the count");
+            T.Eq(-1, Phases.LastMarked, "reset clears the last mark");
 
             T.Group("FrameSources");
             FrameSources.Reset();

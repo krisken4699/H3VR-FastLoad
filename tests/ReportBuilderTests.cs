@@ -93,7 +93,7 @@ namespace FastLoad.Tests
             inp.Frames = fl.ToArray();
 
             List<MemSample> ml = new List<MemSample>();
-            for (int t = 1000; t <= 400000; t += 1000)
+            for (int t = 31000; t <= 400000; t += 1000)
             {
                 MemSample m = new MemSample();
                 m.AtMs = t;
@@ -113,6 +113,7 @@ namespace FastLoad.Tests
             T.True(run.Contains("restart on launch: yes, cost 1166 ms"), "run: restart cost");
             T.True(run.Contains("managed, 12 of 12 hooks on"), "run: hook mode");
             T.True(run.Contains("hooks saw 6") && run.Contains("loaders reported 5"), "run: cross-check numbers: " + run);
+            T.True(run.Contains("not seen loading: 0"), "run: cross-check says how many bundles were only seen in use");
 
             string ph = Section(r, "== 2. Phases");
             T.True(ph.Contains("82.0 s") && ph.Contains("101.0 s") && ph.Contains("130.0 s"), "phases: times");
@@ -143,6 +144,26 @@ namespace FastLoad.Tests
             T.True(sb.Contains("bundles=2") && sb.Contains("mw_ar2vpack") && sb.Contains("slow frames=1"), "bursts: the AR2 spawn: " + sb);
 
             T.True(sb.Contains("(1 still loading)"), "bursts: an unfinished load is said to be unfinished: " + sb);
+
+            T.True(bu.Contains(@"path=C:\p\plugins\Not_Wolfie-AR2_Plus\ar2plus-main"), "bundles: full path is printed");
+
+            // Review I2: a bundle only seen in use is a missed load, not a load the hooks saw.
+            BundleRecord adopted = Rec("x", "ghost", "?", 250000, 250000, 0, 0, 0, 4);
+            adopted.Mod = "(not seen loading)";
+            inp.Bundles.Add(adopted);
+            string run2 = Section(ReportBuilder.Build(inp), "== 1. Run");
+            T.True(run2.Contains("hooks saw 6") && run2.Contains("not seen loading: 1"), "cross-check keeps missed loads apart: " + run2);
+            inp.Bundles.Remove(adopted);
+
+            // Review I3: the sampler starts with the plugin; an early phase has no memory sample of its own.
+            T.True(me.Contains("no sample at that time"), "memory: early phases do not borrow a later sample: " + me);
+
+            // Review I4: a headset that never gives 10 clean seconds must not empty the burst list.
+            int keptQuiet = inp.PhaseAt[(int)Phase.Quiet];
+            inp.PhaseAt[(int)Phase.Quiet] = -1;
+            string noQuiet = Section(ReportBuilder.Build(inp), "== 8. Spawn bursts");
+            T.True(noQuiet.Contains("quiet not seen") && noQuiet.Contains("counted from") && noQuiet.Contains("mw_ar2vpack"), "bursts fall back to the later of menu / OtherLoader done: " + noQuiet);
+            inp.PhaseAt[(int)Phase.Quiet] = keptQuiet;
 
             // Top tables are cut at TopN.
             ReportInput many = new ReportInput();
