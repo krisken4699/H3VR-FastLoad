@@ -26,6 +26,35 @@ namespace FastLoad
             Config.Bind("Probe", "NativeHooks", false,
                 "Also hook the engine-native bundle load methods. Leave off unless the report's cross-check shows missed loads. Takes effect at the next game start. Example: true");
 
+            ConfigEntry<string> startScene = Config.Bind("Start", "Scene", "",
+                "Skip the main menu: when the game starts, go straight to this scene. Leave empty to start in the main menu as usual.\n"
+                + "Works for the game's own scenes and for modded maps (Atlas). Capital letters do not matter.\n"
+                + "Examples:  Scene = IndoorRange     Scene = ArizonaTargets     Scene = HickockRange\n"
+                + "How to find a name:\n"
+                + "  1. Open BepInEx/FastLoad/scenes.txt (written every time the game starts): every game scene and every modded map, ready to copy.\n"
+                + "  2. Or load the map once by hand and read the BepInEx console / LogOutput.log: FastLoad prints\n"
+                + "     'Scene loaded: <name>   (to start the game here: [Start] Scene = <name>)'.\n"
+                + "For a modded map use its identifier from scenes.txt; the name on its menu panel works too if no other map shares it.\n"
+                + "A name that does not exist changes nothing: you stay in the menu and the log says so.\n"
+                + "The wrist menu's return to main menu works as always; the jump happens once per game start.");
+            ConfigEntry<StartWhen> startWhen = Config.Bind("Start", "When", StartWhen.Immediately,
+                "When to go to [Start] Scene.\n"
+                + "Immediately: the moment the main menu has loaded. Mods are still loading in the background then, so the first minute or so in the map can stutter and the item spawner fills up as it goes.\n"
+                + "AfterItemsLoaded: wait in the menu until OtherLoader reports 'All items loaded', then go. Smooth from the start, item spawner complete.\n"
+                + "Example: When = AfterItemsLoaded");
+            try
+            {
+                StartScene start = gameObject.AddComponent<StartScene>();
+                start.Wanted = startScene.Value ?? "";
+                start.When = startWhen.Value;
+                start.Log = Logger;
+                start.Begin();
+            }
+            catch (Exception e)
+            {
+                Logger.LogError("Start scene could not start: " + e.GetType().Name + ": " + e.Message);
+            }
+
             if (!Timeline.Enabled)
             {
                 Logger.LogInfo(enabled.Value
