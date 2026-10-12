@@ -130,3 +130,24 @@ starting), range load 13.6 s.
 - Freezes when OtherLoader finishes (9.5 s and 4 s): log lines in those frames come from ModulWorkshop_Optimizer,
   MagazinePatcher, PrefabReplacer, Custom Sosig Loader. Cause not traced.
 - CustomSosigModelFramework loads its model (4 GB) although `ActiveModel = Sosig` (the model is not shown).
+
+## 2026-10-13: menu never shown, warm DLL read, sosig models on demand
+
+Ken (verbatim): "i said no need to spawn in menu. skip it entirely and spawn in your configured map." and
+"Do we really have to load every single custom sosig while we test guns in the indoor range? Doesn't matter where we
+are. I'm pretty sure I started with saying on demand and memory management. Same for everything else."
+
+- Start scene, `When = Immediately`: the scene is asked for inside the menu scene's "loaded" call with a direct
+  `SceneManager.LoadSceneAsync` at High priority; headset on the loading screen (`Curtain`). Measured on new2: range
+  loaded 0.7 s after the menu scene (was 12.4 s through the game's loader, queued behind mod loads at Low priority).
+  The menu's first frame never runs. The engine still loads the menu scene first; that cannot be switched off.
+- `[Speed] WarmDlls`: 8 threads read all 856 mod DLLs at preloader start (410 ms warm). Aimed at the 31-39 s gap
+  seen before Sodalite's patcher on the first start after hours (3-4 s on repeat starts). Not yet seen on a cold start.
+- `[OnDemand] SosigModels`: CustomSosigModelFramework 1.2.7 reads every model pack in Awake whatever ActiveModel says
+  (LoadModel per pack: mesh, 12 gz animation clips, textures; 9-10.7 s, +4.2 GB for the one pack on new2). Now its
+  pack list is trimmed to the selected pack during Awake and the rest get empty entries filled by its own LoadModel
+  on first use (TryAttachProxy / SelectModel). Measured: "loaded 0 model addons", no 9 s stop. The fill path (picking
+  the pack in the wrist menu) has not been run in the game.
+- Controllers not moving in Ken's 00:23 run: SteamVR log shows Steam Link switching to hand tracking at 5 min 12 s
+  ("Switched active controller driver to: 1"); the game then logs 4 IPCError lines a frame. Why Quest switched: not traced.
+- Next, by Ken's priority: items on demand and memory (OtherLoader's 730 bundles: 5 -> 32 GB commit, the lag in the map).

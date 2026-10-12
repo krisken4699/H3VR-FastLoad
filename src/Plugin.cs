@@ -41,15 +41,28 @@ namespace FastLoad
                 + "Example: WarmDlls = false");
             Logger.LogInfo("Warm DLL read: " + Warm.Mode);
 
+            Config.Bind("OnDemand", "SosigModels", true,
+                "CustomSosigModelFramework reads every installed sosig model pack into memory when the game starts (about 9 s and 4 GB for one\n"
+                + "pack), also when its ActiveModel is 'Sosig' and no pack is shown. With this on, a pack is read the first time it is needed:\n"
+                + "when it is the selected model and a sosig appears, or when you pick it in the wrist menu (the game stands still for those\n"
+                + "seconds, with a black screen). With ActiveModel = Sosig nothing is read at all. 'Random' reads every pack at start as before.\n"
+                + "Does nothing when that mod is not installed. Needs a game restart.\n"
+                + "Example: SosigModels = false");
+            // A pack being read stops the game: black in the headset instead of a stuck picture.
+            bool modelCurtain = false;
+            OnDemandSosigModels.Before = delegate() { modelCurtain = !Curtain.Closed; if (modelCurtain) Curtain.Close(); };
+            OnDemandSosigModels.After = delegate() { if (modelCurtain) Curtain.Open(0.3f); };
+            Logger.LogInfo("Sosig models on demand: " + OnDemandSosigModels.Mode);
+
             ConfigEntry<string> laterPlugins = Config.Bind("Later", "Plugins", "",
                 "Faster start: plugins to hold back until the game is on screen. BepInEx starts every plugin before the first frame, one after\n"
                 + "another; a few heavy ones can take most of that time. The plugins named here are started after you are in the map instead.\n"
-                + "Good candidates: things you do not need in the first minute (custom sosig looks, hats, voice packs).\n"
+                + "Good candidates: things you do not need in the first minute (hats, voice packs).\n"
                 + "Bad candidates: loaders (OtherLoader, Sideloader, Deli, Stratum, Atlas), anything that patches the menu, anything other mods need.\n"
                 + "Name a plugin by its name or its GUID, exactly as in its 'Loading [Name 1.0.0]' log line; separate with commas. Capital letters do not matter.\n"
                 + "A plugin that needs a held one is held too. The game can stand still for as long as a held plugin takes to start.\n"
                 + "To find the slow ones: BepInEx/FastLoad/report_*.txt, section '9. Plugin loading'.\n"
-                + "Example: Plugins = Sosig Hat Realism, CustomSosigModelFramework\n"
+                + "Example: Plugins = Sosig Hat Realism\n"
                 + "Leave empty to start every plugin the normal way. Needs a game restart.");
             ConfigEntry<LaterWhen> laterWhen = Config.Bind("Later", "When", LaterWhen.InTheMap,
                 "When the held plugins start.\n"

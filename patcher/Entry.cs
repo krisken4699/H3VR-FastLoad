@@ -45,6 +45,9 @@ namespace FastLoad.Early
                 if (CfgPeek.Bool(cfg, "Speed", "FastDllLookup", true)) DllLookup.Install();
                 log.LogInfo("Fast DLL lookup: " + DllLookup.Mode);
 
+                if (CfgPeek.Bool(cfg, "OnDemand", "SosigModels", true)) OnDemandSosigModels.Watch(log);
+                log.LogInfo("Sosig models on demand: " + OnDemandSosigModels.Mode);
+
                 LaterList.Wanted = LaterList.Parse(CfgPeek.Value(cfg, "Later", "Plugins"));
                 if (LaterList.Wanted.Count > 0)
                 {
