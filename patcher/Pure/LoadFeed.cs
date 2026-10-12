@@ -20,10 +20,12 @@ namespace FastLoad.Early
             public string What;
             public string Mod;
             public bool Urgent;
+            public bool Alone;
         }
 
         private static readonly object s_gate = new object();
         private static readonly List<Task> s_active = new List<Task>();
+        private static readonly List<Task> s_alone = new List<Task>();
         private static int s_nextToken = 1;
         private static int s_total;
         private static int s_done;
@@ -45,6 +47,7 @@ namespace FastLoad.Early
             try
             {
                 s_active.Clear();
+                s_alone.Clear();
                 s_total = 0;
                 s_done = 0;
                 s_credit = 0;
@@ -109,12 +112,41 @@ namespace FastLoad.Early
             }
         }
 
+        /// <summary>
+        /// A load that is shown by itself, before anything else that is loading and without a count: the map on its
+        /// way while hundreds of item bundles load behind it.
+        /// </summary>
+        public static int BeginAlone(string what, int nowMs)
+        {
+            Monitor.Enter(s_gate);
+            try
+            {
+                Task t = new Task();
+                t.Token = s_nextToken++;
+                t.What = what ?? "";
+                t.Mod = "";
+                t.Alone = true;
+                s_alone.Add(t);
+                return t.Token;
+            }
+            finally
+            {
+                Monitor.Exit(s_gate);
+            }
+        }
+
         public static void End(int token, int nowMs)
         {
             if (token <= 0) return;
             Monitor.Enter(s_gate);
             try
             {
+                for (int i = 0; i < s_alone.Count; i++)
+                {
+                    if (s_alone[i].Token != token) continue;
+                    s_alone.RemoveAt(i);
+                    return;
+                }
                 for (int i = 0; i < s_active.Count; i++)
                 {
                     if (s_active[i].Token != token) continue;
@@ -141,6 +173,11 @@ namespace FastLoad.Early
             Monitor.Enter(s_gate);
             try
             {
+                if (s_alone.Count > 0)
+                {
+                    text = "Loading " + s_alone[0].What;
+                    return true;
+                }
                 if (s_active.Count == 0) return false;
                 if (nowMs - s_burstStartMs < minAgeMs) return false;
                 Task t = s_active[0];

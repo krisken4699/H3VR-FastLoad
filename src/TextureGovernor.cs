@@ -43,7 +43,7 @@ namespace FastLoad
         public ManualLogSource Log;
 
         private const double BusyScanSeconds = 2.0;
-        private const double QuietScanSeconds = 10.0;
+        private const double QuietScanSeconds = 30.0;
         /// <summary>Never-used textures wait this long: what is being spawned gets time to appear.</summary>
         private const double GraceSeconds = 4.0;
         private const double SceneGraceSeconds = 15.0;
@@ -78,9 +78,11 @@ namespace FastLoad
         private enum Phase { Idle, Walk, Drop }
         private Phase m_phase = Phase.Idle;
         private List<Texture2D> m_ripe;
-        private Renderer[] m_renderers;
-        private Graphic[] m_graphics;
-        private int m_walkAt;
+        /// <summary>Scene objects still to look at; the scene is walked a few objects a frame, never listed in one go.</summary>
+        private readonly Stack<Transform> m_todo = new Stack<Transform>();
+        private readonly List<Renderer> m_tmpRenderers = new List<Renderer>();
+        private int m_walked;
+        private double m_listMs;
         private int m_dropAt;
         private Dictionary<int, bool> m_used;
         private Dictionary<int, bool> m_doneMaterials;
@@ -151,7 +153,9 @@ namespace FastLoad
                     s.DroppedAt = -1;
                 }
             }
+            Stopwatch listing = Stopwatch.StartNew();
             UnityEngine.Object[] all = Resources.FindObjectsOfTypeAll(typeof(Texture2D));
+            m_listMs = listing.Elapsed.TotalMilliseconds;
             List<Texture2D> ripe = null;
             for (int i = 0; i < all.Length; i++)
             {
@@ -195,17 +199,14 @@ namespace FastLoad
 
             m_ripe = ripe;
             // Everything in the scene, switched on or not: a muzzle flash that is off now must not hitch when it fires.
-            m_renderers = Resources.FindObjectsOfTypeAll(typeof(Renderer)) as Renderer[];
-            if (m_renderers == null)
-            {
-                UnityEngine.Object[] raw = Resources.FindObjectsOfTypeAll(typeof(Renderer));
-                m_renderers = new Renderer[raw.Length];
-                for (int i = 0; i < raw.Length; i++) m_renderers[i] = raw[i] as Renderer;
-            }
-            m_graphics = FindObjectsOfType<Graphic>();
+            // Roots only here; their children are walked a few a frame.
+            m_todo.Clear();
+            for (int i = 0; i < SceneManager.sceneCount; i++) Roots(SceneManager.GetSceneAt(i));
+            // The scene of things that survive map changes, reached through this object, which is one of them.
+            Roots(gameObject.scene);
+            m_walked = 0;
             m_used = new Dictionary<int, bool>();
             m_doneMaterials = new Dictionary<int, bool>();
-            m_walkAt = 0;
             m_dropAt = 0;
             m_passDropped = 0;
             m_passInScene = 0;
@@ -214,27 +215,35 @@ namespace FastLoad
             m_phase = Phase.Walk;
         }
 
+        private void Roots(Scene scene)
+        {
+            if (!scene.IsValid() || !scene.isLoaded) return;
+            GameObject[] roots = scene.GetRootGameObjects();
+            for (int i = 0; i < roots.Length; i++) if (roots[i] != null) m_todo.Push(roots[i].transform);
+        }
+
         private void Walk(Stopwatch sw)
         {
-            int total = m_renderers.Length + m_graphics.Length;
-            while (m_walkAt < total)
+            while (m_todo.Count > 0)
             {
-                if ((m_walkAt & 15) == 0 && sw.Elapsed.TotalMilliseconds >= Unloading.FrameBudgetMs) return;
-                int i = m_walkAt++;
-                if (i < m_renderers.Length)
+                if ((m_walked & 7) == 0 && sw.Elapsed.TotalMilliseconds >= Unloading.FrameBudgetMs) return;
+                m_walked++;
+                Transform t = m_todo.Pop();
+                // Destroyed since it was put on the list.
+                if (ReferenceEquals(t, null) || t == null) continue;
+                int children = t.childCount;
+                for (int c = 0; c < children; c++) m_todo.Push(t.GetChild(c));
+                t.GetComponents<Renderer>(m_tmpRenderers);
+                for (int r = 0; r < m_tmpRenderers.Count; r++)
                 {
-                    Renderer r = m_renderers[i];
-                    // Gone since the list was made, or a prefab that is not in any scene.
-                    if (ReferenceEquals(r, null) || r == null || !r.gameObject.scene.IsValid()) continue;
-                    Material[] mats = r.sharedMaterials;
+                    Material[] mats = m_tmpRenderers[r].sharedMaterials;
                     for (int m = 0; m < mats.Length; m++) Take(mats[m]);
                 }
-                else
+                Graphic g = t.GetComponent<Graphic>();
+                if (!ReferenceEquals(g, null) && g != null)
                 {
-                    Graphic g = m_graphics[i - m_renderers.Length];
-                    if (ReferenceEquals(g, null) || g == null) continue;
-                    Texture t = g.mainTexture;
-                    if (!ReferenceEquals(t, null) && t != null) m_used[t.GetInstanceID()] = true;
+                    Texture tex = g.mainTexture;
+                    if (!ReferenceEquals(tex, null) && tex != null) m_used[tex.GetInstanceID()] = true;
                     Take(g.material);
                 }
             }
@@ -246,8 +255,6 @@ namespace FastLoad
                 if (maps[i].lightmapDir != null) m_used[maps[i].lightmapDir.GetInstanceID()] = true;
             }
             Take(RenderSettings.skybox);
-            m_renderers = null;
-            m_graphics = null;
             m_doneMaterials = null;
             m_phase = Phase.Drop;
         }
@@ -303,7 +310,8 @@ namespace FastLoad
             long freed = m_passCommit - Memory.Commit();
             // Probe file only: unloading is not something the player is told about.
             Timeline.Write("TEX", "dropped " + m_passDropped + " textures nothing in the scene uses: memory " + (freed >= 0 ? "-" : "+") + (Math.Abs(freed) / 1048576)
-                + " MB over " + m_passFrames + " frames, most in one frame " + m_passWorstMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms; inScene="
+                + " MB over " + m_passFrames + " frames (" + m_walked + " scene objects looked at), listing textures took "
+                + m_listMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms, most in one frame " + m_passWorstMs.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " ms; inScene="
                 + m_passInScene + " notDroppable=" + m_passRefused + " | so far dropped=" + m_dropped + " cameBackAndKept=" + m_hot + " notDroppable=" + m_refused);
         }
     }

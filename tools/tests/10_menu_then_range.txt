@@ -1,0 +1,7 @@
+wait 8
+roots                            # the range: no game-mode stands or map panels of the menu in here
+wait items
+scene MainMenu3
+wait 12
+roots                            # the menu: the stands are here
+quit

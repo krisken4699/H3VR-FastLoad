@@ -187,6 +187,7 @@ namespace FastLoad
                     else if (verb == "scene") m_step = new SceneStep(rest);
                     else if (verb == "clear") m_note = Clear();
                     else if (verb == "check") m_note = Check();
+                    else if (verb == "roots") m_note = Roots();
                     else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
                     else if (verb == "quit")
@@ -421,6 +422,16 @@ namespace FastLoad
             }
             return "objects=" + objects + " transforms=" + transforms + " components=" + components + " renderers=" + renderers + " missingMaterial=" + noMaterial
                 + " errorShader=" + errorShader + " missingMesh=" + noMesh;
+        }
+
+        /// <summary>Top-level objects of the scene by name: what a mod put where.</summary>
+        private static string Roots()
+        {
+            Scene scene = SceneManager.GetActiveScene();
+            GameObject[] roots = scene.GetRootGameObjects();
+            string names = "";
+            for (int i = 0; i < roots.Length; i++) names += (i == 0 ? "" : " | ") + roots[i].name;
+            return scene.name + " has " + roots.Length + " top-level objects: " + names;
         }
 
         private string Clear()

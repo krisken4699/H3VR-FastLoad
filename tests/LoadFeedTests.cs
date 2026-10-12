@@ -51,6 +51,18 @@ namespace FastLoad.Tests
             LoadFeed.End(extra, 21900);
             LoadFeed.End(0, 21900);
             T.True(!LoadFeed.Line(22000, 300, out text), "ending twice or with no token changes nothing");
+
+            // The map: shown alone, at once, in front of a batch, without the batch's count.
+            LoadFeed.Reset();
+            int item = LoadFeed.Begin("icarus lmg", "Nuigo-Surplus", false, false, 30000);
+            LoadFeed.Begin("passam", "Nuigo-Surplus", false, false, 30000);
+            int map = LoadFeed.BeginAlone("map IndoorRange_Updated", 30010);
+            T.True(LoadFeed.Line(30020, 300, out text), "a load named alone shows without waiting");
+            T.Eq("Loading map IndoorRange_Updated", text, "the map line: no mod, no count, in front of the batch");
+            LoadFeed.End(map, 31000);
+            LoadFeed.Line(31000, 300, out text);
+            T.Eq("Loading icarus lmg from Nuigo-Surplus   1/2", text, "the batch is back when the map is in, its count untouched");
+            LoadFeed.End(item, 31100);
         }
     }
 }

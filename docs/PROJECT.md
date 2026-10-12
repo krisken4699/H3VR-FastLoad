@@ -241,3 +241,27 @@ its scripts."
 Items: (1) setting to unload or not, default on; (2) content that was used and is no longer in the scene is unloaded
 after a configurable time; (3) silently; (4) unloading must not cause lag; (5) modular guns: load only the part packs
 the gun needs plus whatever those need, never a gun without what it depends on.
+
+### Built for the unload / part-level request and what followed (2026-10-13, 03:30-04:40)
+
+- **Modular parts on demand** (`[OnDemand] ModularParts`, `src/MwoParts.cs`, `patcher/Pure/PartIndex.cs`): with a learned
+  index ModulAR15 appears in 10.8-11.3 s with 7 of 47 bundles (was 57-65 s, 48 bundles). `check` step (transforms,
+  components, renderers, missing materials/meshes) gives the same numbers as the full load for ModulAR15, NWAR2-HK416D
+  and ModulAK101Factory. The workshop-panel path (rest of a group loads when a panel initialises) has not been run.
+- **Unload** (`[Unload] Enabled`, `IdleSeconds` default 120): a deleted gun's textures were dropped 24-30 s after
+  `clear` with IdleSeconds = 30; respawn 24-29 ms, same `check` numbers. Governor work per frame after the scene-walk
+  rewrite: 4.6-5.8 ms in its heaviest frames (the one call that lists loaded textures takes 4.4-5.6 ms and cannot be
+  split), one 38.6 ms frame in the run not yet explained. Before the rewrite: 22-55 ms. Drops are not logged to the console.
+- **Start scene, as invent60 asked 2026-10-13** ("no need to skip right to the map anymore. make it spawn in menu. say
+  loading map ... and go. no need to black out the screen"): starts in the menu, window says "Loading map X" from the
+  first frame, scene loaded directly (no fade). Then invent60: "in menu theres supposed to be mod stands that lets u
+  select tgm and supply raid ... its here in indoor range": cause = those mods (AMP, SupplyRaid, TeamsGameMode) load a
+  bundle at menu load and build their stand when it arrives, into whatever scene is there. Now the jump waits until
+  bundle loads that began around the menu's load (not by the item loaders) are over and the menu's top-level object
+  count is stable for 2.5 s (limit 45 s). Measured: went 17.0 s after the menu loaded; range has no stands; menu has
+  Atlas_MapSelector, SR_MapSelector, TGM_MapSelector.
+- **Hands**: both profiles' logs (new2 and dev) carry the SteamVR skeleton IPCError lines, and vrserver.txt shows
+  Steam Link switching controllers <-> hand tracking many times an hour ("Switched active controller driver to: 1/0").
+  In new2 runs the game logs "Setting control mode to CMODE: Oculus ... oculus quest2 (left/right controller)" in the
+  menu and again in the range. Nothing found in FastLoad that touches hands; not proven either way.
+- Author name is invent60; GUID `invent60.h3vr.fastload`; old config file is moved to the new name at start.

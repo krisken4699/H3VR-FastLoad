@@ -56,6 +56,14 @@ namespace FastLoad
         private bool m_direct;
         /// <summary>Loading-window entry for the map on its way.</summary>
         private int m_feed;
+        private const double MenuQuietSeconds = 2.5;
+        private const double MenuSettleLimitSeconds = 45.0;
+        private int m_menuLoadedMs;
+        private int m_menuRoots = -1;
+        private bool m_menuSettled;
+        private bool m_endFeedUnlessJumped;
+        private bool m_saidMenuWait;
+        private readonly Stopwatch m_sinceMenuChange = new Stopwatch();
 
         /// <summary>True from the game's start until the [Start] Scene has loaded, or it is clear that there is no jump.</summary>
         public static bool Busy;
@@ -107,6 +115,7 @@ namespace FastLoad
                 if (scene.name.StartsWith("MainMenu", StringComparison.Ordinal))
                 {
                     m_sinceMenu.Start();
+                    m_menuLoadedMs = FastLoad.Early.Clock.NowMs;
                 }
                 else
                 {
@@ -139,6 +148,13 @@ namespace FastLoad
                     m_feed = 0;
                 }
                 if (Curtain.Closed) CurtainWatch();
+                if (m_endFeedUnlessJumped)
+                {
+                    // Staying in the menu after all (wrong name, already there): the line goes.
+                    m_endFeedUnlessJumped = false;
+                    FastLoad.Early.LoadFeed.End(m_feed, FastLoad.Early.Clock.NowMs);
+                    m_feed = 0;
+                }
                 if (m_done || !m_sinceMenu.IsRunning) return;
                 Step(m_sinceMenu.Elapsed.TotalSeconds);
             }
@@ -149,9 +165,61 @@ namespace FastLoad
             }
         }
 
+        /// <summary>
+        /// Mods put their own things into the main menu (game-mode stands, map panels). Several load a bundle when
+        /// the menu scene loads and build their stand when it is in, into whatever scene is there by then: leave
+        /// too early and the stands appear in the start scene instead. So: every bundle load that began around the
+        /// menu's own load, and is not one of the item loaders' hundreds, has to be over, and after that the menu's
+        /// list of top-level objects has to stay the same for a moment.
+        /// </summary>
+        private bool MenuSettled(double sinceMenu)
+        {
+            if (m_menuSettled) return true;
+            if (sinceMenu >= MenuSettleLimitSeconds)
+            {
+                Log.LogInfo("Start scene: the menu was still changing after " + (int)MenuSettleLimitSeconds + " s; going anyway");
+                return m_menuSettled = true;
+            }
+            int waiting = 0;
+            string names = "";
+            List<FastLoad.Early.BundleRecord> all = FastLoad.Early.BundleLedger.Snapshot();
+            for (int i = 0; i < all.Count; i++)
+            {
+                FastLoad.Early.BundleRecord r = all[i];
+                if (r.Done || r.StartMs < m_menuLoadedMs - 1500 || r.StartMs > m_menuLoadedMs + 4000) continue;
+                string by = r.By ?? "";
+                if (by.StartsWith("OtherLoader", StringComparison.OrdinalIgnoreCase) || by.IndexOf("Sideloader", StringComparison.OrdinalIgnoreCase) >= 0
+                    || by.IndexOf("ModulWorkshop", StringComparison.OrdinalIgnoreCase) >= 0 || by.StartsWith("Deli", StringComparison.OrdinalIgnoreCase)
+                    || by.StartsWith("Stratum", StringComparison.OrdinalIgnoreCase)) continue;
+                waiting++;
+                names += (names.Length == 0 ? "" : ", ") + r.Name;
+            }
+            int roots = SceneManager.GetActiveScene().rootCount;
+            if (waiting > 0 || roots != m_menuRoots)
+            {
+                m_menuRoots = roots;
+                m_sinceMenuChange.Reset();
+                m_sinceMenuChange.Start();
+                if (waiting > 0 && !m_saidMenuWait)
+                {
+                    m_saidMenuWait = true;
+                    Log.LogInfo("Start scene: waiting for mods to finish setting up the main menu first (" + names + ")");
+                }
+                return false;
+            }
+            if (m_sinceMenuChange.Elapsed.TotalSeconds < MenuQuietSeconds) return false;
+            return m_menuSettled = true;
+        }
+
         private void Step(double sinceMenu)
         {
             if (sinceMenu < SettleSeconds) return;
+            if (Wanted.Trim().Length > 0 && m_feed == 0 && !m_jumped)
+            {
+                // Said from the first frame in the menu on: where this is going.
+                m_feed = FastLoad.Early.LoadFeed.BeginAlone("map " + Wanted.Trim(), FastLoad.Early.Clock.NowMs);
+            }
+            if (!MenuSettled(sinceMenu)) return;
 
             if (When == StartWhen.AfterItemsLoaded && !m_watch.Seen)
             {
@@ -193,7 +261,6 @@ namespace FastLoad
                 }
                 Jumped();
                 m_direct = true;
-                m_feed = FastLoad.Early.LoadFeed.Begin("map " + pick.Value, "", false, false, FastLoad.Early.Clock.NowMs);
                 return;
             }
             if (pick.Kind == PickKind.Modded)
@@ -202,7 +269,7 @@ namespace FastLoad
                 string error;
                 bool asked = AtlasBridge.Load(pick.Value, out error);
                 if (asked) Jumped();
-                if (asked) m_feed = FastLoad.Early.LoadFeed.Begin("map " + pick.Value, "", false, false, FastLoad.Early.Clock.NowMs);
+
                 if (asked)
                     Log.LogInfo("Start scene: asked Atlas to load '" + pick.Value + "' (" + sinceMenu.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " s after the menu loaded)");
                 else
@@ -306,6 +373,7 @@ namespace FastLoad
 
         private void Jumped()
         {
+            m_endFeedUnlessJumped = false;
             m_jumped = true;
             Busy = true;
             m_sinceJump.Start();
@@ -314,6 +382,8 @@ namespace FastLoad
         private void Finish()
         {
             m_done = true;
+            // Taken away again unless a jump follows (Jumped runs after this and keeps it).
+            m_endFeedUnlessJumped = true;
             // Set again by Jumped when this Finish is the one before a jump.
             Busy = false;
             m_sinceMenu.Stop();
