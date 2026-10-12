@@ -151,3 +151,34 @@ are. I'm pretty sure I started with saying on demand and memory management. Same
 - Controllers not moving in Ken's 00:23 run: SteamVR log shows Steam Link switching to hand tracking at 5 min 12 s
   ("Switched active controller driver to: 1"); the game then logs 4 IPCError lines a frame. Why Quest switched: not traced.
 - Next, by Ken's priority: items on demand and memory (OtherLoader's 730 bundles: 5 -> 32 GB commit, the lag in the map).
+
+## 2026-10-13 (night): on demand, measured with the in-game test driver
+
+Ken: "go on. i let u keep testing on your own. load maps. spawn weapons. spawn attachments. spawn modded content and
+maps. spawn sosigs. test if the on demand thing works." and "Might wanna clean up scene, clear guns, etc too" (test
+scripts now `clear` after their spawns).
+
+Test driver: `tools/test_run.sh tools/tests/NN_*.txt` (steps in `src/AutoTest.cs`); results are ` TST ` lines in the
+run log. Full `census` reads every dropped texture back in: use `census name counts` in governor runs.
+
+What the memory was (new2, IndoorRange_Updated, nobody in the headset):
+- After item loading: 9263 item-spawner icon textures (mostly uncompressed RGBA32) = 16 GB of 32 GB commit.
+- Spawning one ModulAR15: ModulWorkshop_Optimizer loads all 52 `mw_*` part bundles of the platform with
+  `LoadAllAssetsAsync()`: +8600 textures, +31 GB commit, 79-84 s before the gun appears.
+
+| | before | icons on demand | + textures on demand |
+|---|---|---|---|
+| commit at "all items loaded" | 29.7 GB | 14.0 GB | 10.5 GB |
+| settled in the range | 32.3 GB | 16.6 GB | 12.6 GB |
+| after spawning ModulAR15 | 47.7 GB | (not run) | 15.1 GB |
+| peak of the whole run | 52.2 GB | | 20.1 GB |
+
+- `[OnDemand] ItemIcons` (IconGovernor) and `[OnDemand] Textures` (TextureGovernor): Resources.UnloadAsset on textures
+  nothing in the scene uses; Unity reads them back from the open bundle on use. 385 dropped textures came back by
+  themselves within 20 s (in use) and were then kept. 0 "not droppable". 12 of 12 sampled icons had pixels again.
+- Sosig model pack on demand: read when picked (10.3 s, +4.0 GB), sosig spawned with it; not read otherwise.
+- Game gun, modded guns, attachments, sosig clothing, sosigs, modded map (DriftWood), ProvingGround, T&H lobby, back to
+  the range: all steps ended without a failure line; 0 probe errors.
+- NOT solved: the first modular gun still takes 66 s to appear (the 52 bundles are still read in full; only their
+  textures are dropped afterwards). Second spawn 24 ms. Needs part-level loading in/around ModulWorkshop_Optimizer.
+- NOT checked: how it looks. Nobody has seen the item spawner or a gun in the headset with the governors on.

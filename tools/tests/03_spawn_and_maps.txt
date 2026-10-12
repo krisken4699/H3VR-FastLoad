@@ -1,0 +1,28 @@
+wait items
+wait 15
+spawn M1911                      # game gun
+spawn ModulAR15                  # modular guns
+spawn NWAR2-HK416D
+spawn ModulAK101Factory
+spawn potatoesBeretta92fsMelom   # modded gun
+spawn ftw.RAIDXE                 # modded attachments
+spawn DotPicSightHolosunHS510C
+spawn NWSpacerWF
+spawn Skye_Sosig_ChestRigQuick_Rifleman_01_RUS_SSLeto_DarkGreen
+sosig M_Swat_Heavy               # game sosig
+sosig Aleyssu                    # modded sosig
+wait 5
+model NotGodlike.mw4milsim       # sosig model pack, read on demand
+sosig M_Swat_Guard               # gets the custom look
+wait 5
+model Sosig
+clear
+scene DriftWood                  # modded map
+spawn M1911
+sosig M_Swat_Guard
+wait 5
+scene ProvingGround              # game scenes
+scene TakeAndHold_Lobby_2
+scene IndoorRange_Updated
+wait 10
+quit

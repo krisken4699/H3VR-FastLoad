@@ -1,0 +1,18 @@
+wait items
+wait 15
+spawn ModulAR15                  # 52 part bundles come in
+wait 20                          # the gun lies in the scene: do its textures stay, or keep coming back?
+census gun-out counts
+spawn NWAR2-HK416D
+spawn ModulAK101Factory
+wait 10
+clear
+wait 10
+spawn ModulAR15                  # a second time: bundles are open already
+wait 10
+clear
+scene ProvingGround
+wait 10
+scene IndoorRange_Updated
+wait 10
+quit

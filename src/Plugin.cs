@@ -68,6 +68,27 @@ namespace FastLoad
                 }
             }
 
+            ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", true,
+                "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
+                + "platform in full on the profile this was built on: 8600 textures, +31 GB, for the handful of parts on the gun.\n"
+                + "With this on, textures that nothing in the scene uses are dropped again a few seconds after they come in. Unity reads a dropped\n"
+                + "texture back from its mod file by itself when something shows it (a part you pick in the workshop, a gun you spawn).\n"
+                + "Left alone: the map's own textures, anything a renderer or UI element in the scene uses, textures made while the game runs.\n"
+                + "Cost: the first time a dropped texture is shown again it is read from disk, which can be a short hitch.\n"
+                + "Log: 'Textures on demand: dropped N textures nothing in the scene uses: memory -X MB'.\n"
+                + "Example: Textures = false");
+            if (textures.Value)
+            {
+                try
+                {
+                    gameObject.AddComponent<TextureGovernor>().Log = Logger;
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Textures on demand could not start: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
             // A pack being read stops the game: black in the headset instead of a stuck picture.
             bool modelCurtain = false;
             OnDemandSosigModels.Before = delegate() { modelCurtain = !Curtain.Closed; if (modelCurtain) Curtain.Close(); };

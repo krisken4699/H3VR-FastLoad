@@ -1,0 +1,9 @@
+wait items
+wait 15
+census before-modular counts
+spawn ModulAR15
+census after-modular counts
+census after-modular-full
+clear
+wait 5
+quit
