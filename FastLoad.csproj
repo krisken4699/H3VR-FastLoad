@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net46</TargetFramework>
+    <AssemblyName>FastLoad</AssemblyName>
+    <RootNamespace>FastLoad</RootNamespace>
+    <Nullable>disable</Nullable>
+    <LangVersion>8</LangVersion>
+    <Optimize>true</Optimize>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <!-- SDK projects glob **/*.cs: keep the patcher and the tests out of the plugin. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);patcher\**;tests\**;docs\**;tools\**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="patcher\FastLoadPatcher.csproj">
+      <Private>false</Private>
+    </ProjectReference>
+    <Reference Include="BepInEx">
+      <HintPath>C:\Users\Hp\AppData\Roaming\com.kesomannen.gale\h3vr\profiles\new2\BepInEx\core\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\H3VR\h3vr_Data\Managed\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+</Project>
