@@ -1,0 +1,11 @@
+wait 10
+inputoff                         # fault 1: input set off. Guard switches it on again.
+wait 6
+scene ProvingGround
+wait 4
+steamvroff                       # fault 2: SteamVR's camera callback gone
+scene IndoorRange_Updated        # new hands start parked; nothing moves them unless the guard does
+wait 4
+steamvroff
+wait 12                          # hands line: gap back to 0 (when the controllers are connected)
+quit

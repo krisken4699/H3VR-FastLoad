@@ -187,6 +187,8 @@ namespace FastLoad
                     else if (verb == "scene") m_step = new SceneStep(rest);
                     else if (verb == "clear") m_note = Clear();
                     else if (verb == "check") m_note = Check();
+                    else if (verb == "inputoff") m_note = InputOff();
+                    else if (verb == "steamvroff") m_note = SteamVrOff();
                     else if (verb == "roots") m_note = Roots();
                     else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
@@ -391,6 +393,37 @@ namespace FastLoad
             flat.y = 0f;
             if (flat.sqrMagnitude < 0.01f) flat = Vector3.forward;
             return head.position + flat.normalized * distance + Vector3.up * up;
+        }
+
+        /// <summary>
+        /// Switches the SteamVR object's component off, in this scene and (because it is asked for again after a load)
+        /// the next: its camera callback goes away and with it the update that moves the hands.
+        /// </summary>
+        private static string SteamVrOff()
+        {
+            Valve.VR.SteamVR_Behaviour[] all = Resources.FindObjectsOfTypeAll(typeof(Valve.VR.SteamVR_Behaviour)) as Valve.VR.SteamVR_Behaviour[];
+            int n = 0;
+            for (int i = 0; all != null && i < all.Length; i++)
+            {
+                if (all[i] == null || !all[i].enabled) continue;
+                all[i].enabled = false;
+                n++;
+            }
+            return "switched off " + n + " SteamVR component(s)";
+        }
+
+        /// <summary>Switches every SteamVR input set off, the state a bad scene change leaves behind. The hand guard should undo it.</summary>
+        private static string InputOff()
+        {
+            Valve.VR.SteamVR_ActionSet[] sets = Valve.VR.SteamVR_Input.actionSets;
+            string names = "";
+            for (int i = 0; sets != null && i < sets.Length; i++)
+            {
+                if (sets[i] == null || !sets[i].IsActive(Valve.VR.SteamVR_Input_Sources.Any)) continue;
+                sets[i].Deactivate(Valve.VR.SteamVR_Input_Sources.Any);
+                names += (names.Length == 0 ? "" : ", ") + sets[i].GetShortName();
+            }
+            return names.Length == 0 ? "no input set was on" : "switched off: " + names;
         }
 
         /// <summary>The same numbers with a feature on and off = the feature left nothing out.</summary>

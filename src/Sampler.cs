@@ -182,7 +182,7 @@ namespace FastLoad
                     {
                         if (h.Pose != null)
                         {
-                            pose = h.Pose[h.HandSource].poseIsValid ? "ok" : "BAD";
+                            pose = (h.Pose[h.HandSource].poseIsValid ? "ok" : "BAD") + " input=" + (h.Pose.active ? "on" : "OFF");
                             conn = h.Pose[h.HandSource].deviceIsConnected ? "1" : "0";
                             // What SteamVR itself reports for the controller, before the game does anything with it.
                             UnityEngine.Vector3 rawAt = h.Pose[h.HandSource].localPosition;

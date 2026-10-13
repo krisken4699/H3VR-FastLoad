@@ -281,3 +281,20 @@ the gun needs plus whatever those need, never a gun without what it depends on.
   first use; it did NOT install in the runs so far (ModifySosig not found by parameter name; lookup changed to the
   Sosig-typed first parameter, not yet seen working).
 - FastLoad was removed from new2 at invent60's request while hands were broken and put back after the fix.
+
+### 2026-10-13 afternoon: hands still stuck in invent60's own session; hand guard
+
+- His session 15:45 (jump through SteamVR_LoadLevel): in the menu gap 0; right after the range loaded both controllers
+  read disconnected / pose BAD for a moment, then connected with valid pose, and the hands stayed parked (gap ~740 mm,
+  controllers moving) until he quit. So the earlier "fixed" (gap 0 headless, controllers lying still and connected
+  throughout) did not cover his case. The direct-load theory is not the whole cause.
+- From the SteamVR plugin code: pose values are refreshed in Update with events skipped; the events that move the
+  hand (SteamVR_Behaviour_Pose.UpdateTransform) fire only from the visual update in SteamVR_Behaviour's
+  Camera.onPreCull callback for a stereo camera, and UpdateTransform also needs poseAction.active. During a
+  SteamVR_LoadLevel load the same picture shows (values move, hand does not, input on).
+- `src/HandGuard.cs` (`[Fix] HandsAfterSceneLoad`): (1) input set off with a controller connected for 1 s -> sets that
+  were on are switched on again (seen working once: "switched on again: default"); (2) connected controller, valid
+  pose, hand > 50 mm from the pose for 0.75 s outside a load -> FastLoad calls SteamVR_Input.UpdateVisualActions(false)
+  every frame until the next scene, and logs what it found (SteamVR objects, eye-camera callbacks, pauseRendering,
+  main camera). Repair 2 has NOT been seen working: in the test run the controllers were disconnected.
+- Which of the two (or neither) is his fault is unknown until a session of his writes the "Hands:" line.

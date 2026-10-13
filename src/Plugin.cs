@@ -215,6 +215,24 @@ namespace FastLoad
                 Logger.LogError("Autotest could not start: " + e.GetType().Name + ": " + e.Message);
             }
 
+            ConfigEntry<bool> handGuard = Config.Bind("Fix", "HandsAfterSceneLoad", true,
+                "Hands that stop following the controllers after a map change. The game's player rig switches SteamVR's input set on when it\n"
+                + "starts and off when it is destroyed; when a map change does those two in the wrong order the set stays off, SteamVR still\n"
+                + "knows where the controllers are, and the hands just sit there. With this on, FastLoad notices (controller connected, hand\n"
+                + "input off for a second) and switches the set back on. Says so in the log when it does: 'Hands: controllers were connected...'.\n"
+                + "Example: HandsAfterSceneLoad = false");
+            if (handGuard.Value)
+            {
+                try
+                {
+                    gameObject.AddComponent<HandGuard>().Log = Logger;
+                }
+                catch (Exception e)
+                {
+                    Logger.LogError("Hand guard could not start: " + e.GetType().Name + ": " + e.Message);
+                }
+            }
+
             ConfigEntry<bool> rebinders = Config.Bind("Tame", "ConfigRebinders", true,
                 "Some plugins bind their whole config again every frame or physics tick (measured: 0.95 ms a tick for one plugin with 8 settings).\n"
                 + "Binding a setting twice just returns the same setting, so everything after the first time is wasted. With this on, a plugin's\n"
