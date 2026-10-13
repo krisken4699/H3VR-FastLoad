@@ -13,8 +13,24 @@ namespace FastLoad.Early
     /// </summary>
     public sealed class PartIndex
     {
+        /// <summary>One part as a workshop panel lists it, without its model.</summary>
+        public sealed class Part
+        {
+            public string Group = "";
+            public string Name = "";
+            /// <summary>Left out of the Take and Hold spawn pool.</summary>
+            public bool NoSpawn;
+            /// <summary>Extra entries in the Take and Hold spawn pool.</summary>
+            public int ExtraSpawn;
+        }
+
         public sealed class Entry
         {
+            /// <summary>Parts in the order they were found; the n-th part's small picture is the n-th tile of the picture file.</summary>
+            public readonly List<Part> List = new List<Part>();
+            /// <summary>Small pictures written to disk for every part in List (0 = not yet: the bundle cannot be stood in for).</summary>
+            public int Pictures;
+
             public long Size;
             public long Ticks;
             /// <summary>"group|part name".</summary>
@@ -30,6 +46,18 @@ namespace FastLoad.Early
         public int Count
         {
             get { return m_byPath.Count; }
+        }
+
+        /// <summary>Every bundle file known, by path.</summary>
+        public IEnumerable<KeyValuePair<string, Entry>> Entries
+        {
+            get { return m_byPath; }
+        }
+
+        /// <summary>Whether everything a workshop panel shows of this bundle's parts is known: it can be stood in for without being loaded.</summary>
+        public static bool Complete(Entry e)
+        {
+            return e != null && e.List.Count > 0 && e.Pictures == e.List.Count;
         }
 
         public static string PartKey(string group, string part)
@@ -54,6 +82,33 @@ namespace FastLoad.Early
             if (!string.IsNullOrEmpty(part)) e.Parts[PartKey(group, part)] = true;
         }
 
+        /// <summary>A part with what a panel and the spawn pool need to know about it. A name already listed for that group is not listed twice.</summary>
+        public static int AddPartInfo(Entry e, string group, string part, bool noSpawn, int extraSpawn)
+        {
+            if (e == null || string.IsNullOrEmpty(group) || string.IsNullOrEmpty(part)) return -1;
+            for (int i = 0; i < e.List.Count; i++) if (e.List[i].Group == group && e.List[i].Name == part) return i;
+            AddPart(e, group, part);
+            Part p = new Part();
+            p.Group = group;
+            p.Name = part;
+            p.NoSpawn = noSpawn;
+            p.ExtraSpawn = extraSpawn;
+            e.List.Add(p);
+            return e.List.Count - 1;
+        }
+
+        /// <summary>Tiles in a row of the picture file of a bundle with that many parts.</summary>
+        public static int PictureColumns(int parts)
+        {
+            return parts < 1 ? 1 : parts < 16 ? parts : 16;
+        }
+
+        public static int PictureRows(int parts)
+        {
+            int cols = PictureColumns(parts);
+            return parts < 1 ? 1 : (parts + cols - 1) / cols;
+        }
+
         public static void AddSkin(Entry e, string skinPath)
         {
             if (e != null && !string.IsNullOrEmpty(skinPath)) e.Skins[skinPath] = true;
@@ -70,12 +125,20 @@ namespace FastLoad.Early
         public string Serialize()
         {
             StringBuilder sb = new StringBuilder();
-            sb.Append("FastLoad modular part index v1\n");
+            sb.Append("FastLoad modular part index v2\n");
             foreach (KeyValuePair<string, Entry> pair in m_byPath)
             {
                 sb.Append("B\t").Append(pair.Key).Append('\t').Append(pair.Value.Size.ToString(CultureInfo.InvariantCulture)).Append('\t')
                     .Append(pair.Value.Ticks.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 foreach (string g in pair.Value.Groups.Keys) sb.Append("G\t").Append(g).Append('\n');
+                // L lines keep their order: it is the order of the picture tiles.
+                for (int i = 0; i < pair.Value.List.Count; i++)
+                {
+                    Part part = pair.Value.List[i];
+                    sb.Append("L\t").Append(part.Group).Append('\t').Append(part.Name).Append('\t').Append(part.NoSpawn ? "1" : "0").Append('\t')
+                        .Append(part.ExtraSpawn.ToString(CultureInfo.InvariantCulture)).Append('\n');
+                }
+                if (pair.Value.Pictures > 0) sb.Append("I\t").Append(pair.Value.Pictures.ToString(CultureInfo.InvariantCulture)).Append('\n');
                 foreach (string p in pair.Value.Parts.Keys) sb.Append("P\t").Append(p).Append('\n');
                 foreach (string s in pair.Value.Skins.Keys) sb.Append("S\t").Append(s).Append('\n');
             }
@@ -88,7 +151,7 @@ namespace FastLoad.Early
             PartIndex index = new PartIndex();
             if (string.IsNullOrEmpty(text)) return index;
             string[] lines = text.Split('\n');
-            if (lines.Length == 0 || lines[0].Trim() != "FastLoad modular part index v1") return index;
+            if (lines.Length == 0 || lines[0].Trim() != "FastLoad modular part index v2") return index;
             Entry current = null;
             for (int i = 1; i < lines.Length; i++)
             {
@@ -107,6 +170,23 @@ namespace FastLoad.Early
                 else if (current == null) continue;
                 else if (line[0] == 'G') current.Groups[rest] = true;
                 else if (line[0] == 'P') current.Parts[rest] = true;
+                else if (line[0] == 'L')
+                {
+                    string[] f = rest.Split('\t');
+                    int extra;
+                    if (f.Length != 4 || !int.TryParse(f[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out extra)) continue;
+                    Part part = new Part();
+                    part.Group = f[0];
+                    part.Name = f[1];
+                    part.NoSpawn = f[2] == "1";
+                    part.ExtraSpawn = extra;
+                    current.List.Add(part);
+                }
+                else if (line[0] == 'I')
+                {
+                    int n;
+                    if (int.TryParse(rest, NumberStyles.Integer, CultureInfo.InvariantCulture, out n)) current.Pictures = n;
+                }
                 else if (line[0] == 'S') current.Skins[rest] = true;
             }
             return index;

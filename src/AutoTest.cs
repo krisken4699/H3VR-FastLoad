@@ -200,6 +200,8 @@ namespace FastLoad
                     else if (verb == "directscene") m_step = new DirectSceneStep(rest);
                     else if (verb == "roots") m_note = Roots();
                     else if (verb == "profile") m_step = new ProfileStep(rest);
+                    else if (verb == "bundleprobe" || verb == "bench" || verb == "pick") m_step = new LabStep(verb, rest, m_made);
+                    else if (verb == "standins") m_note = LoadLab.StandIns();
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
                     else if (verb == "quit")
                     {
@@ -259,6 +261,23 @@ namespace FastLoad
                 if (m_sw.Elapsed.TotalSeconds < m_seconds) return false;
                 Note = LagProfiler.End(m_label) + " | " + m_setup;
                 return true;
+            }
+        }
+
+        private sealed class LabStep : Step
+        {
+            public LabStep(string verb, string rest, List<GameObject> made)
+            {
+                LoadLab.Begin(verb, rest, made);
+            }
+
+            public override bool Tick(AutoTest test)
+            {
+                bool over = LoadLab.Tick();
+                for (int i = 0; i < LoadLab.Lines.Count; i++) test.Say(LoadLab.Lines[i]);
+                LoadLab.Lines.Clear();
+                if (over) Note = LoadLab.Note;
+                return over;
             }
         }
 

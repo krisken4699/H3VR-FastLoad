@@ -1,0 +1,7 @@
+wait items
+wait 12
+bundleprobe mw_ar2_plus_uppers 3       # 379 MB: file alone, three single parts, then everything
+bundleprobe mw_meats_modular2_handguards 3   # 1003 MB: the pack behind the 4.3 s frame
+bundleprobe mw_meats_modular2_bufferstocks 3 # 316 MB
+wait 3
+quit

@@ -22,9 +22,10 @@ namespace FastLoad
     ///     materials between them);
     ///   - bundles never seen before (loading them is how their contents become known);
     ///   - everything for a part group, when a part that is wanted is not there otherwise.
-    /// The rest of a part group is loaded when a workshop panel for that group appears, and the panel is refreshed
-    /// when it is in. What bundle holds what is learned as bundles load and kept in BepInEx/cache between starts,
-    /// so the first modular gun after installing loads everything once.
+    /// The rest of a part group is not loaded for a workshop panel either: the panel lists those parts from what
+    /// is known about their bundles (MwoStubs), and a bundle loads when one of its parts is picked. What bundle
+    /// holds what is learned as bundles load and kept in BepInEx/cache between starts, so the first modular gun
+    /// and the first panel after installing load everything once.
     ///
     /// The optimizer does all the loading, as before; only its lists are shorter.
     /// </summary>
@@ -45,8 +46,6 @@ namespace FastLoad
 
         /// <summary>Part being put on a point right now, as "group|part".</summary>
         private static string s_configuring;
-        /// <summary>Groups whose every bundle is wanted (a workshop panel for them is open).</summary>
-        private static readonly Dictionary<string, bool> s_wholeGroups = new Dictionary<string, bool>(StringComparer.Ordinal);
         private static readonly Dictionary<string, KeyValuePair<int, Dictionary<string, bool>>> s_registeredNames = new Dictionary<string, KeyValuePair<int, Dictionary<string, bool>>>();
 
         public static string Mode = "off";
@@ -105,8 +104,10 @@ namespace FastLoad
                 HarmonyMethod last = new HarmonyMethod(me.GetMethod("ConfigurePost", Any));
                 h.Patch(typeof(ModularFVRFireArm).GetMethod("ConfigureModularWeaponPart", Any), prefix: first, finalizer: last);
                 h.Patch(typeof(ModularFVRPhysicalObject).GetMethod("ConfigureModularWeaponPart", Any), prefix: first, finalizer: last);
-                h.Patch(typeof(ModularWorkshopUI).GetMethod("InitializeArrays", Any), null, new HarmonyMethod(me.GetMethod("PanelPost", Any)));
-                h.Patch(typeof(ModularWorkshopUI).GetMethod("PButton_ShowUI", Any), null, new HarmonyMethod(me.GetMethod("PanelPost", Any)));
+                h.Patch(register, null, new HarmonyMethod(me.GetMethod("RegisterPost", Any)));
+                h.Patch(typeof(ModularWorkshopUI).GetMethod("InitializeArrays", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
+                h.Patch(typeof(ModularWorkshopUI).GetMethod("PButton_ShowUI", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
+                MwoStubs.Install(h);
                 Mode = "on, " + s_index.Count + " bundles known from earlier runs";
             }
             catch (Exception e)
@@ -138,7 +139,12 @@ namespace FastLoad
                 if (path == null || assets == null) return;
                 FileInfo file = new FileInfo(path);
                 if (!file.Exists) return;
-                PartIndex.Entry e = s_index.Learn(Path.GetFullPath(path), file.Length, file.LastWriteTimeUtc.Ticks);
+                string full = Path.GetFullPath(path);
+                // Known with its pictures already: nothing new to learn from loading it again.
+                PartIndex.Entry old = s_index.Find(full, file.Length, file.LastWriteTimeUtc.Ticks);
+                if (PartIndex.Complete(old)) return;
+                PartIndex.Entry e = s_index.Learn(full, file.Length, file.LastWriteTimeUtc.Ticks);
+                List<Sprite> pictures = new List<Sprite>();
                 for (int i = 0; i < assets.Length; i++)
                 {
                     ModularWorkshopPartsDefinition parts = assets[i] as ModularWorkshopPartsDefinition;
@@ -149,13 +155,16 @@ namespace FastLoad
                         {
                             GameObject prefab = parts.ModularPrefabs[k];
                             ModularWeaponPart part = prefab != null ? prefab.GetComponent<ModularWeaponPart>() : null;
-                            if (part != null) PartIndex.AddPart(e, parts.ModularPartsGroupID, part.Name);
+                            if (part == null) continue;
+                            int at = PartIndex.AddPartInfo(e, parts.ModularPartsGroupID, part.Name, part.RemovedFromSpawnTable, part.AdditionalSpawnTableEntries);
+                            if (at == pictures.Count) pictures.Add(part.Icon);
                         }
                         continue;
                     }
                     ModularWorkshopSkinsDefinition skins = assets[i] as ModularWorkshopSkinsDefinition;
                     if (skins != null) PartIndex.AddSkin(e, skins.ModularPartsGroupID + "/" + skins.PartName);
                 }
+                MwoStubs.Learn(e, full, pictures.ToArray());
                 s_indexDirty = true;
                 s_sinceDirty.Reset();
                 s_sinceDirty.Start();
@@ -168,6 +177,12 @@ namespace FastLoad
         /// <summary>Called every frame by the plugin: writes the index a few seconds after the last thing was learned.</summary>
         public static void Tick()
         {
+            if (MwoStubs.Tick())
+            {
+                s_indexDirty = true;
+                s_sinceDirty.Reset();
+                s_sinceDirty.Start();
+            }
             if (!s_indexDirty || s_sinceDirty.Elapsed.TotalSeconds < 5.0) return;
             s_indexDirty = false;
             try
@@ -260,7 +275,7 @@ namespace FastLoad
                 if (path == null || known.ContainsKey(path)) continue;
                 PartIndex.Entry e = Registered(path) ? null : Look(path);
                 known[path] = e;
-                if (Registered(path) || PartIndex.Needed(e, parts, skins, s_wholeGroups))
+                if (Registered(path) || PartIndex.Needed(e, parts, skins, null))
                 {
                     keep.Add(path);
                     folders[BundleLedger.ModOf(path)] = true;
@@ -330,7 +345,7 @@ namespace FastLoad
             }
         }
 
-        private static PartIndex.Entry Look(string path)
+        public static PartIndex.Entry Look(string path)
         {
             try
             {
@@ -361,46 +376,92 @@ namespace FastLoad
                 cached = new KeyValuePair<int, Dictionary<string, bool>>(def.ModularPrefabs.Count, names);
                 s_registeredNames[group] = cached;
             }
-            return cached.Value.ContainsKey(part);
+            return cached.Value.ContainsKey(part) && !MwoStubs.IsStub(group, part);
         }
 
-        // ---- the rest of a group, when a workshop panel for it appears
+        private static void RegisterPost(UnityEngine.Object[] assets)
+        {
+            try
+            {
+                MwoStubs.Registered(assets);
+            }
+            catch (Exception e)
+            {
+                if (s_log != null) s_log.LogWarning("Modular parts: stand-ins not replaced: " + e.GetType().Name + ": " + e.Message);
+            }
+        }
 
-        private static void PanelPost(ModularWorkshopUI __instance)
+        public static bool IsRegistered(string path)
+        {
+            return Registered(path);
+        }
+
+        /// <summary>Has the optimizer load these bundles in the background, then calls back.</summary>
+        public static void LoadThen(List<string> paths, MwoStubs.Done then)
+        {
+            IEnumerator load = s_ensureAsync.Invoke(null, new object[] { paths }) as IEnumerator;
+            if (load == null) return;
+            s_runCoroutine.Invoke(null, new object[] { new Then(load, then) });
+        }
+
+        // ---- a workshop panel for a group appears
+
+        /// <summary>
+        /// Before a panel builds its list: parts of bundles that are known and not loaded get stand-ins (MwoStubs),
+        /// so the list is complete without loading anything. Only bundles nothing is known about yet are loaded
+        /// here, once, which is how they become known; the panel is refreshed when they are in.
+        /// </summary>
+        private static void PanelPre(ModularWorkshopUI __instance)
         {
             try
             {
                 string group = __instance != null ? __instance.ModularPartsGroupID : null;
-                if (string.IsNullOrEmpty(group) || s_wholeGroups.ContainsKey(group)) return;
-                s_wholeGroups[group] = true;
+                if (string.IsNullOrEmpty(group)) return;
+                int made = MwoStubs.EnsureGroup(group, s_index);
+                if (made > 0) Timeline.Write("DEF", "modular parts: workshop panel for '" + group + "': " + made + " parts listed without loading their bundles");
                 IDictionary dic = s_groupToBundles.GetValue(null) as IDictionary;
                 List<string> all = dic != null && dic.Contains(group) ? dic[group] as List<string> : null;
                 if (all == null) return;
                 List<string> todo = new List<string>();
-                for (int i = 0; i < all.Count; i++) if (!Registered(all[i])) todo.Add(all[i]);
+                for (int i = 0; i < all.Count; i++)
+                {
+                    if (all[i] == null || Registered(all[i]) || s_asked.ContainsKey(all[i])) continue;
+                    PartIndex.Entry e = Look(all[i]);
+                    // Known: either stood in for, or it holds no part of its own (skins only, loaded with their part).
+                    if (e != null && (PartIndex.Complete(e) || e.List.Count == 0)) continue;
+                    s_asked[all[i]] = true;
+                    todo.Add(all[i]);
+                }
                 if (todo.Count == 0) return;
-                Timeline.Write("DEF", "modular parts: workshop panel for '" + group + "' opened; loading its other " + todo.Count + " bundles");
-                IEnumerator load = s_ensureAsync.Invoke(null, new object[] { todo }) as IEnumerator;
-                if (load == null) return;
-                s_runCoroutine.Invoke(null, new object[] { new Then(load, __instance) });
+                Timeline.Write("DEF", "modular parts: workshop panel for '" + group + "': " + todo.Count + " bundles never seen with their pictures; loading them once to learn them");
+                ModularWorkshopUI panel = __instance;
+                LoadThen(todo, delegate
+                {
+                    if (panel == null) return;
+                    panel.InitializeArrays();
+                    panel.UpdateDisplay();
+                });
             }
             catch (Exception e)
             {
-                if (s_log != null) s_log.LogWarning("Modular parts: could not load the rest of a part group for the workshop panel: " + e.GetType().Name + ": " + e.Message);
+                if (s_log != null) s_log.LogWarning("Modular parts: workshop panel not prepared: " + e.GetType().Name + ": " + e.Message);
             }
         }
 
-        /// <summary>Runs the optimizer's load routine, then shows the panel what is there now.</summary>
+        /// <summary>Bundles a panel has asked for already (a second panel of the same group does not ask again).</summary>
+        private static readonly Dictionary<string, bool> s_asked = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>Runs the optimizer's load routine, then calls back.</summary>
         private sealed class Then : IEnumerator
         {
             private readonly IEnumerator m_inner;
-            private readonly ModularWorkshopUI m_panel;
+            private readonly MwoStubs.Done m_then;
             private bool m_done;
 
-            public Then(IEnumerator inner, ModularWorkshopUI panel)
+            public Then(IEnumerator inner, MwoStubs.Done then)
             {
                 m_inner = inner;
-                m_panel = panel;
+                m_then = then;
             }
 
             public object Current
@@ -415,14 +476,11 @@ namespace FastLoad
                 m_done = true;
                 try
                 {
-                    if (m_panel != null)
-                    {
-                        m_panel.InitializeArrays();
-                        m_panel.UpdateDisplay();
-                    }
+                    if (m_then != null) m_then();
                 }
-                catch (Exception)
+                catch (Exception e)
                 {
+                    if (s_log != null) s_log.LogWarning("Modular parts: after-load step failed: " + e.GetType().Name + ": " + e.Message);
                 }
                 return false;
             }

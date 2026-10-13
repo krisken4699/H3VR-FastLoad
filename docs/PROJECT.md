@@ -340,3 +340,68 @@ MCX pitch black, ModulAK and Kastov fine.
   sampled). Hide-and-show of a 12-icon page: 12 pictures before and after. Commit after item loading 17.3 GB.
 - Without the texture governor nothing unloads a gun's textures after it is deleted (`[Unload]` only acts on icons now),
   and each modular platform adds about 8.5 GB when first spawned.
+
+## 2026-10-13 20:50 request: no lag on spawn / worktable, load light first (invent60, verbatim)
+
+"look at it when i spawn guns and especially when i put it on the modul weapon worktable. tons of lag. WAVES of lag. yk
+lazy loading? gatsby type shit? can we load things but not full resolution and when you actually do load it you can swap
+it out for full resolution. mini graphql. i dont want it to stop the game at all. esepcially when i put on worktable and
+it gotta load every modul things at once that works with it?"
+
+Items: (1) spawning a gun must not stop the game; (2) putting a gun on the modular worktable must not stop the game,
+although every part that fits is offered there; (3) load a light version first, swap the full one in when it is really
+needed; (4) ask only for what is needed (per part, not per pack).
+
+### What his own session shows (run_20261013-193318, he was in the headset)
+
+- Spawn noveske_mw: one frame of 1185 ms. In it ModulWorkshop_Optimizer's `ConfigureModularWeaponPart` prefix loaded
+  mw_meats_modular2_bufferstocks (316 MB) with `LoadFromFile` + `LoadAllAssets` (its SYNC path).
+- Spawn ModulAeroM4E1: one frame of 4322 ms when `LoadAllAssetsAsync` of mw_meats_modular2_handguards (1003 MB file)
+  finished; commit +3.2 GB in that frame.
+- Gun on the worktable (f=24645): 16 panels opened in one frame, each asked for the rest of its group (42 packs).
+  Frames of 2791, 2097, 1254, 3208, 2154, 4774, 3568, 2403, 1336, 2530, 1439, 939, 1605 ms ... over 57 s.
+  Commit 25.9 GB -> 48.9 GB; system commit left stayed at 140-800 MB all the way (page file growing).
+
+### Measured in new2 (test steps `bundleprobe`, `bench` in `src/LoadLab.cs`; scripts 19, 20)
+
+- Repro, nobody in the headset: `tools/test_run.sh tools/tests/20_worktable.txt`. Gun onto the ModulAR platform:
+  longest frame 7798 ms, 72 frames over 50 ms holding 44 s of the 75 s, commit +23.1 GB, +6299 textures, 19 panels.
+  Spawning ModulAeroM4E1 before it: 10.4 s, +7.8 GB, longest frame 976 ms.
+- A pack alone, with 12-15 GB of system commit free: mw_meats_modular2_handguards (1003 MB file) read in full with
+  `LoadAllAssetsAsync`: 5.3 s, longest frame 103 ms, +2.6 GB. In invent60's session the same pack gave a 4322 ms frame
+  with 300-700 MB of system commit free. So the multi-second frames come with Windows running out of commit (the page
+  file is system-managed, 22.5 GB at the time of the check, growing while the game asks); the read itself costs frames of
+  25-100 ms. NOT measured: the same pack with commit short on purpose and nothing else different.
+- What a pack offers by name: only its definition files (`GetAllAssetNames`: 0 prefabs). One parts definition pulls in
+  every part of its list with textures (handguards: 1 definition, 2.9 s, +1675 MB, 436 textures); a skins definition
+  only its own materials (67 of them: +826 MB together). So the smallest piece the game can be asked for is one
+  definition, not one part.
+- Closing a pack again (`Unload(true)`): one frame of 175-434 ms.
+
+### Built 2026-10-13 21:20 (NOT yet run in the game: invent60 had the game open on dev)
+
+- `src/MwoStubs.cs`, "stand-ins": when a pack loads, each part's name, group, Take and Hold settings and a 64 px copy of
+  its panel picture are kept (`BepInEx/cache/FastLoad.modularparts.txt` v2 + `FastLoad.modularpictures/`). A workshop
+  panel then lists the parts of packs that are known and not loaded as empty stand-in objects with those pictures: no
+  pack is read when a gun goes on the platform. Pressing a stand-in loads its pack in the background (loading window
+  names it), the real parts take the stand-ins' places in the list, and the press is carried out.
+  A part asked for by code (vault file, Take and Hold random part) still loads its pack at once, as before.
+- A pack never seen with its pictures is loaded in full once by the first panel that lists it. After the update that
+  is every pack once.
+- Test steps: `bench s`, `standins` (counts + picture sheets as PNG), `pick group text` (presses a stand-in, waits until
+  the part is on the gun).
+
+Not built, still in scope: spawn loads whole packs (should be: only the definitions that hold the parts on the gun, and
+the sub-parts those parts carry, all before the gun appears: that also removes the SYNC load frame); learning packs
+ahead of time instead of at first use; closing idle packs without a long frame; a lighter picture of a part's own
+textures (the game cannot be asked for a smaller version of a texture; see "smallest piece" above).
+
+## 2026-10-14 request: do the loading ourselves, off the main thread / in another process (invent60, verbatim)
+
+"if we cant multi thread allot on unity, can we offload it to a different process started by our thing. or can u force
+async. say the textures that are being loaded by unity to somewhere happens on the main thread only. then figure out
+what exactly and how it does and add the textures to the wherever it is on your own. needs to be added to a hash table?
+do it. do the exact same thing. or cant you? push this current version first tho"
+
+Items: (1) push the current version first; (2) find out exactly what Unity does on the main thread when it loads
+textures; (3) do that work ourselves off the main thread, in our own helper process if need be, or force it async.

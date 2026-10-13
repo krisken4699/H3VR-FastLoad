@@ -1,0 +1,14 @@
+wait items
+wait 8
+spawn ModulAeroM4E1
+wait 10
+look
+check
+clear
+spawn ModulAR15
+wait 10
+look
+clear
+iconlook 12
+wait 2
+quit

@@ -1,0 +1,17 @@
+wait items
+wait 12
+spawn ModularWeaponTesterAR      # the ModulAR workshop platform
+wait 3
+spawn ModulAeroM4E1
+wait 12
+bench 75                         # gun onto the platform: every panel opens
+standins
+pick Handguards_AR *             # a part whose pack is not loaded: loads it, then puts it on
+wait 3
+check
+look
+pick Grips_AR *
+wait 3
+clear
+wait 4
+quit
