@@ -1,2 +1,3 @@
-wait 30
+wait 14
+hands
 quit

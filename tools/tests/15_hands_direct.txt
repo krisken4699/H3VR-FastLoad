@@ -1,0 +1,10 @@
+wait 6
+hands                            # healthy, as the game's loader left them
+guard off
+directscene ProvingGround        # the load that leaves hands parked
+wait 3
+hands                            # the parked state, described
+guard on
+wait 6
+hands                            # after the guard's steps
+quit

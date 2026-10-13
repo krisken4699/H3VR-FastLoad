@@ -298,3 +298,19 @@ the gun needs plus whatever those need, never a gun without what it depends on.
   every frame until the next scene, and logs what it found (SteamVR objects, eye-camera callbacks, pauseRendering,
   main camera). Repair 2 has NOT been seen working: in the test run the controllers were disconnected.
 - Which of the two (or neither) is his fault is unknown until a session of his writes the "Hands:" line.
+
+### 2026-10-13 16:16: hands, the definite cause
+
+- In the scene the start-scene jump leads to, each hand's `SteamVR_Behaviour_Pose` component has
+  `poseAction = /actions/mixedreality/in/ExternalCamera` (set `mixedreality`, never active). The hand itself
+  (`FVRViveHand.Pose`) has `/actions/default/in/Pose`. `SteamVR_Behaviour_Pose.UpdateTransform` only moves the object
+  while `poseAction.active`, so the hands never move although the controller poses are valid and changing.
+  Read straight off the objects by the `hands` test step / the guard's description line.
+- Repair in `HandGuard` (step 0, every 0.25 s, connected or not): when the component's action path differs from the
+  hand's, disable the component, set `poseAction = hand.Pose`, enable it. Measured in the run of 16:13-16:16 with the
+  controllers being moved: repair logged 6 s after the range loaded, then steamvrMoved == handMoved, gap 0 mm, both hands.
+- NOT traced: why the component comes up with the ExternalCamera action in that load and not in the menu or in loads
+  made later by hand. (`poseAction` has a field initialiser `GetAction<SteamVR_Action_Pose>("Pose")` and is re-bound in
+  `SteamVR_Action.InitAfterDeserialize`; which of the two goes wrong, and what in new2 triggers it, is open.)
+- Earlier explanations in this file (direct load, input set off, pre-cull callback) were wrong or incomplete; the
+  guard's other steps stay as fallbacks.

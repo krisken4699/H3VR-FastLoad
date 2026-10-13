@@ -60,8 +60,9 @@ namespace FastLoad
         {
             if (mode == LoadSceneMode.Additive) return;
             // A new scene has its own SteamVR object and hands: judged afresh.
-            if (m_drive) Timeline.Write("HND", "new scene: driving hands stopped after " + m_drives + " updates; checking again");
+            if (m_drive) Timeline.Write("HND", "new scene: driving hands stopped after " + m_drives + " updates (stage " + m_stage + "); checking again");
             m_drive = false;
+            m_stage = 0;
             m_stuck.Reset();
         }
 
@@ -78,14 +79,34 @@ namespace FastLoad
             if (m_drive) Drive();
         }
 
+        /// <summary>
+        /// 0 = SteamVR's own update is run for it; 1 = the hand's pose component was switched off and on again;
+        /// 2 = the hand object is put where the controller is, by hand, every frame.
+        /// </summary>
+        private int m_stage;
+        private readonly Stopwatch m_sinceStage = new Stopwatch();
+
         private void Drive()
         {
-            if (m_drivenFrame == Time.frameCount) return;
+            if (m_drivenFrame == Time.frameCount && m_stage < 2) return;
+            bool first = m_drivenFrame != Time.frameCount;
             m_drivenFrame = Time.frameCount;
-            m_drives++;
+            if (first) m_drives++;
             try
             {
-                SteamVR_Input.UpdateVisualActions(false);
+                if (first) SteamVR_Input.UpdateVisualActions(false);
+                if (m_stage < 2) return;
+                // Last resort, and done at every chance in the frame so that it is the last word before the picture.
+                FVRMovementManager mm = GM.CurrentMovementManager;
+                if (mm == null || mm.Hands == null) return;
+                for (int i = 0; i < mm.Hands.Length; i++)
+                {
+                    FVRViveHand h = mm.Hands[i];
+                    if (h == null || h.Pose == null || !h.Pose[h.HandSource].deviceIsConnected || !h.Pose[h.HandSource].poseIsValid) continue;
+                    // Same space as the pose: a hand that follows by itself has exactly these values.
+                    h.transform.localPosition = h.Pose[h.HandSource].localPosition;
+                    h.transform.localRotation = h.Pose[h.HandSource].localRotation;
+                }
             }
             catch (Exception e)
             {
@@ -99,6 +120,11 @@ namespace FastLoad
             if (m_since.Elapsed.TotalSeconds < 0.25) return;
             m_since.Reset();
             m_since.Start();
+            if (Paused)
+            {
+                m_drive = false;
+                return;
+            }
             try
             {
                 FVRMovementManager mm = GM.CurrentMovementManager;
@@ -107,6 +133,27 @@ namespace FastLoad
                 bool anyOff = false;
                 bool anyStuck = false;
                 string gaps = "";
+                // ---- 0. the cause found on 2026-10-13: the component that moves the hand listens to the wrong action.
+                // The hand itself (FVRViveHand.Pose) has /actions/default/in/Pose; its SteamVR_Behaviour_Pose came up
+                // bound to /actions/mixedreality/in/ExternalCamera, an action of a set that is never on, so it never
+                // moved the hand. Put right at once, connected controller or not, so it is never seen.
+                for (int i = 0; i < mm.Hands.Length; i++)
+                {
+                    FVRViveHand h = mm.Hands[i];
+                    if (h == null || h.Pose == null) continue;
+                    SteamVR_Behaviour_Pose bp = h.GetComponent<SteamVR_Behaviour_Pose>();
+                    if (bp == null || bp.poseAction == null) continue;
+                    string has = bp.poseAction.fullPath;
+                    string wants = h.Pose.fullPath;
+                    if (string.IsNullOrEmpty(wants) || string.Equals(has, wants, StringComparison.OrdinalIgnoreCase)) continue;
+                    // Off and on around the change: that is where the component lets go of one action and takes hold of the other.
+                    bp.enabled = false;
+                    bp.poseAction = h.Pose;
+                    bp.enabled = true;
+                    m_repairs++;
+                    Say("hand '" + h.name + "' was listening to " + has + " instead of " + wants + " and could not move; set right (repair " + m_repairs + " this run, scene "
+                        + SceneManager.GetActiveScene().name + ")");
+                }
                 for (int i = 0; i < mm.Hands.Length; i++)
                 {
                     FVRViveHand h = mm.Hands[i];
@@ -172,7 +219,31 @@ namespace FastLoad
                 }
 
                 // ---- 2. hand not where its controller is
-                if (!anyStuck || m_drive)
+                if (m_drive)
+                {
+                    m_stuck.Reset();
+                    if (!anyStuck || m_stage >= 2 || m_sinceStage.Elapsed.TotalSeconds < 0.75) return;
+                    // Still not following after the last step: the next one.
+                    m_stage++;
+                    m_sinceStage.Reset();
+                    m_sinceStage.Start();
+                    if (m_stage == 1)
+                    {
+                        int toggled = 0;
+                        for (int i = 0; i < mm.Hands.Length; i++)
+                        {
+                            SteamVR_Behaviour_Pose bp = mm.Hands[i] != null ? mm.Hands[i].GetComponent<SteamVR_Behaviour_Pose>() : null;
+                            if (bp == null) continue;
+                            bp.enabled = false;
+                            bp.enabled = true;
+                            toggled++;
+                        }
+                        Say("still not following (" + gaps + "); switched the pose component of " + toggled + " hand(s) off and on");
+                    }
+                    else Say("still not following (" + gaps + "); FastLoad now puts the hands where the controllers are itself, every frame");
+                    return;
+                }
+                if (!anyStuck)
                 {
                     m_stuck.Reset();
                     return;
@@ -181,8 +252,12 @@ namespace FastLoad
                 if (m_stuck.Elapsed.TotalSeconds < StuckSeconds) return;
                 m_stuck.Reset();
                 m_drive = true;
+                m_stage = 0;
+                m_sinceStage.Reset();
+                m_sinceStage.Start();
                 m_drives = 0;
                 m_repairs++;
+                for (int i = 0; i < mm.Hands.Length; i++) Timeline.Write("HND", Describe(mm.Hands[i]));
                 string found = "";
                 try
                 {
@@ -205,6 +280,65 @@ namespace FastLoad
             {
                 enabled = false;
                 Log.LogError("Hand guard switched off: " + e.GetType().Name + ": " + e.Message);
+            }
+        }
+
+        /// <summary>What a hand object is made of and hangs on, for finding out why it does not move.</summary>
+        /// <summary>Test switch: the guard watches and reports but repairs nothing.</summary>
+        public static bool Paused;
+
+        internal static string Describe(FVRViveHand h)
+        {
+            try
+            {
+                if (h == null) return "hand: null";
+                string text = "hand '" + h.name + "' source=" + h.HandSource + " parent='" + (h.transform.parent != null ? h.transform.parent.name : "none") + "' localPos="
+                    + h.transform.localPosition.ToString("F3") + " pose=" + h.Pose[h.HandSource].localPosition.ToString("F3") + " device=" + h.Pose[h.HandSource].trackedDeviceIndex;
+                SteamVR_Behaviour_Pose bp = h.GetComponent<SteamVR_Behaviour_Pose>();
+                if (bp == null) text += " | NO SteamVR_Behaviour_Pose on it";
+                else text += " | pose component: enabled=" + bp.enabled + " source=" + bp.inputSource + " action=" + (bp.poseAction != null ? bp.poseAction.GetShortName() : "none")
+                    + " actionActive=" + (bp.poseAction != null && bp.poseAction.active) + " origin='" + (bp.origin != null ? bp.origin.name : "none") + "' index=" + bp.GetDeviceIndex();
+                try
+                {
+                    SteamVR_Action_Pose hp = h.Pose;
+                    text += " | hand's action " + hp.fullPath + " set=" + hp.actionSet.GetShortName() + " any[active=" + hp.active + " binding=" + hp[SteamVR_Input_Sources.Any].activeBinding
+                        + " setOn=" + hp.actionSet.IsActive(SteamVR_Input_Sources.Any) + "] own[active=" + hp[h.HandSource].active + " binding=" + hp[h.HandSource].activeBinding
+                        + " setOn=" + hp.actionSet.IsActive(h.HandSource) + " device=" + hp[h.HandSource].trackedDeviceIndex + "] anyDevice=" + hp[SteamVR_Input_Sources.Any].trackedDeviceIndex;
+                    if (bp != null && bp.poseAction != null)
+                    {
+                        SteamVR_Action_Pose pa = bp.poseAction;
+                        text += " | component's action " + pa.fullPath + " set=" + pa.actionSet.GetShortName() + " any[active=" + pa.active + " binding=" + pa[SteamVR_Input_Sources.Any].activeBinding
+                            + " setOn=" + pa.actionSet.IsActive(SteamVR_Input_Sources.Any) + "] own[active=" + pa[bp.inputSource].active + " binding=" + pa[bp.inputSource].activeBinding + "]"
+                            + " sameObject=" + ReferenceEquals(pa, hp);
+                    }
+                    SteamVR_ActionSet[] sets = SteamVR_Input.actionSets;
+                    text += " | sets:";
+                    for (int i = 0; sets != null && i < sets.Length; i++)
+                        if (sets[i] != null) text += " " + sets[i].GetShortName() + "(any=" + sets[i].IsActive(SteamVR_Input_Sources.Any) + ",L=" + sets[i].IsActive(SteamVR_Input_Sources.LeftHand)
+                            + ",R=" + sets[i].IsActive(SteamVR_Input_Sources.RightHand) + ")";
+                }
+                catch (Exception e)
+                {
+                    text += " | actions: " + e.GetType().Name + ": " + e.Message;
+                }
+                text += " | components:";
+                Component[] all = h.GetComponents<Component>();
+                for (int i = 0; i < all.Length; i++) if (all[i] != null) text += " " + all[i].GetType().Name + ((all[i] is Behaviour) && !((Behaviour)all[i]).enabled ? "(off)" : "");
+                // Up the tree: a switched-off or oddly placed parent explains a lot.
+                text += " | path:";
+                for (Transform t = h.transform; t != null; t = t.parent)
+                {
+                    text += " <- " + t.name + (t.gameObject.activeSelf ? "" : "(OFF)");
+                    SteamVR_Behaviour_Pose up = t != h.transform ? t.GetComponent<SteamVR_Behaviour_Pose>() : null;
+                    if (up != null) text += "[pose component here: enabled=" + up.enabled + " source=" + up.inputSource + " localPos=" + t.localPosition.ToString("F3") + "]";
+                }
+                Rigidbody rb = h.GetComponent<Rigidbody>();
+                if (rb != null) text += " | rigidbody kinematic=" + rb.isKinematic + " constraints=" + rb.constraints;
+                return text;
+            }
+            catch (Exception e)
+            {
+                return "hand: could not describe: " + e.GetType().Name + ": " + e.Message;
             }
         }
 

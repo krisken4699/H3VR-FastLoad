@@ -189,6 +189,9 @@ namespace FastLoad
                     else if (verb == "check") m_note = Check();
                     else if (verb == "inputoff") m_note = InputOff();
                     else if (verb == "steamvroff") m_note = SteamVrOff();
+                    else if (verb == "hands") m_note = HandsNow();
+                    else if (verb == "guard") { HandGuard.Paused = rest == "off"; m_note = "hand guard " + (HandGuard.Paused ? "watching only" : "repairing"); }
+                    else if (verb == "directscene") m_step = new DirectSceneStep(rest);
                     else if (verb == "roots") m_note = Roots();
                     else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
@@ -393,6 +396,49 @@ namespace FastLoad
             flat.y = 0f;
             if (flat.sqrMagnitude < 0.01f) flat = Vector3.forward;
             return head.position + flat.normalized * distance + Vector3.up * up;
+        }
+
+        private string HandsNow()
+        {
+            FVRMovementManager mm = GM.CurrentMovementManager;
+            if (mm == null || mm.Hands == null) return "no hands";
+            string text = "";
+            for (int i = 0; i < mm.Hands.Length; i++)
+            {
+                string one = HandGuard.Describe(mm.Hands[i]);
+                Say(one);
+                text += (i == 0 ? "" : " || ") + one;
+            }
+            return mm.Hands.Length + " hands described above";
+        }
+
+        /// <summary>The scene loaded with Unity's own call, not the game's loader: the way that left hands parked.</summary>
+        private sealed class DirectSceneStep : Step
+        {
+            private readonly Stopwatch m_sw = Stopwatch.StartNew();
+            private readonly Stopwatch m_tail = new Stopwatch();
+            private readonly bool m_asked;
+
+            public DirectSceneStep(string name)
+            {
+                m_asked = SceneManager.LoadSceneAsync(name, LoadSceneMode.Single) != null;
+                if (!m_asked) Note = "UNITY WOULD NOT LOAD '" + name + "'";
+            }
+
+            public override bool Tick(AutoTest test)
+            {
+                if (!m_asked) return true;
+                if (!m_tail.IsRunning)
+                {
+                    if (m_sw.ElapsedMilliseconds < 300) { test.m_sceneCame = false; return false; }
+                    if (!test.m_sceneCame) return m_sw.Elapsed.TotalSeconds > 120;
+                    Note = "arrived after " + (m_sw.Elapsed.TotalMilliseconds / 1000.0).ToString("0.0", CultureInfo.InvariantCulture) + " s";
+                    test.m_made.Clear();
+                    m_tail.Start();
+                    return false;
+                }
+                return m_tail.Elapsed.TotalSeconds >= 4.0;
+            }
         }
 
         /// <summary>
