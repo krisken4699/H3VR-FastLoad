@@ -314,3 +314,29 @@ the gun needs plus whatever those need, never a gun without what it depends on.
   `SteamVR_Action.InitAfterDeserialize`; which of the two goes wrong, and what in new2 triggers it, is open.)
 - Earlier explanations in this file (direct load, input set off, pre-cull callback) were wrong or incomplete; the
   guard's other steps stay as fallbacks.
+
+### 2026-10-13 evening: black modular guns, white spawner icons (invent60's report), what was wrong
+
+invent60: loading window full of item loading in the range ("keep it to yourself"; no test script was running, it was
+the real item loading being named); spawner icons that are placeholder squares; ModulAero M4E1 / ModulAR parts / HK417 /
+MCX pitch black, ModulAK and Kastov fine.
+
+- **Loading window**: now only shows what the player waits for (the map, the part packs of a gun being spawned).
+  Background item loading is shown only with `[Hud] ShowBackgroundLoading = true`.
+- **Black guns = `[OnDemand] Textures`.** Measured with the new `look` step (the gun alone in a picture): healthy
+  brightness 43, after dropping its 72 textures 0; asking the material for the texture (`GetTexture`) reads it back but
+  the gun stays black; only `SetTexture(slot, GetTexture(slot))` brings it back (43). So a dropped texture does NOT come
+  back by being drawn, which the governor was built on. `Textures` is now off by default and marked not safe. A correct
+  version needs: every material holding a dropped texture re-bound when it enters the scene, and no dropping of
+  textures that are only reachable through material slots it does not know. Not built.
+- **White icons = two causes in `[OnDemand] ItemIcons`**, both fixed and audited:
+  1. OtherLoader closes 29 older mods' files while keeping their contents (`Unload(false)`); their icons can never be
+     read back, so dropping one loses it for good (sprite alive, `sprite.texture` null, white square). Now a prefix on
+     `AssetBundle.Unload(false)` protects the icons of that file's spawner entries, its sprites and same-named files.
+  2. Icons held only by spawner entries made at run time are never dropped (their file is unknown).
+  Also: a picture any UI image or sprite renderer still holds, shown or hidden, is not dropped, and a hook on
+  `Image.set_sprite` reads a dropped picture back when a sprite is handed to an image.
+  Audit (`iconaudit`, every icon asked for its picture after item loading): 9264 icons, 0 lost (before: 1 in 12-48
+  sampled). Hide-and-show of a 12-icon page: 12 pictures before and after. Commit after item loading 17.3 GB.
+- Without the texture governor nothing unloads a gun's textures after it is deleted (`[Unload]` only acts on icons now),
+  and each modular platform adds about 8.5 GB when first spawned.

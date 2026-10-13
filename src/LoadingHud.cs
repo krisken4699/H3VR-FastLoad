@@ -23,6 +23,8 @@ namespace FastLoad
         public ManualLogSource Log;
         public bool ShowWindow = true;
         public bool Boost = true;
+        /// <summary>Also show background loading (the item lists after game start).</summary>
+        public bool Everything;
         /// <summary>Measured on one ModulAR15 (48 bundles): BelowNormal 65 s, Normal 57 s at 26-45 fps, High 48 s at 14-46 fps.</summary>
         public ThreadPriority BoostTo = ThreadPriority.Normal;
 
@@ -56,7 +58,7 @@ namespace FastLoad
                 if (MwoBridge.PartLevel && MwoBridge.Mode == "on") PartsTick();
                 if (!ShowWindow || m_broken) return;
                 string text;
-                bool show = LoadFeed.Line(Clock.NowMs, MinAgeMs, out text);
+                bool show = Everything ? LoadFeed.Line(Clock.NowMs, MinAgeMs, out text) : LoadFeed.WaitedLine(Clock.NowMs, out text);
                 if (show)
                 {
                     m_sinceShown.Reset();

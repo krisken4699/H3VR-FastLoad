@@ -116,7 +116,14 @@ namespace FastLoad
                 }
             }
 
-            ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", true,
+            ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", false,
+                "OFF BY DEFAULT, NOT SAFE YET: with this on, modular guns came out pitch black (2026-10-13). A texture dropped this way does not
+"
+                + "come back by being drawn; every material using it has to be handed the texture again, and that part is not built.
+"
+                + "What it is meant to do, for when it is:
+"
+                + "
                 "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
                 + "platform in full on the profile this was built on: 8600 textures, +31 GB, for the handful of parts on the gun.\n"
                 + "With this on, textures that nothing in the scene uses are dropped again a few seconds after they come in. Unity reads a dropped\n"
@@ -279,6 +286,11 @@ namespace FastLoad
                 LoadingHud hud = gameObject.AddComponent<LoadingHud>();
                 hud.Log = Logger;
                 hud.ShowWindow = window.Value;
+                hud.Everything = Config.Bind("Hud", "ShowBackgroundLoading", false,
+                    "Also show what loads in the background: after game start the mod loaders read hundreds of item files, and with this on the\n"
+                    + "window names each one ('Loading icarus lmg from ...   212/529') for the minute that takes. Off: the window only appears for\n"
+                    + "things you are waiting for, the map you are going to and the part packs of a gun you just spawned.\n"
+                    + "Example: ShowBackgroundLoading = true").Value;
                 hud.Boost = boost.Value;
             }
             catch (Exception e)

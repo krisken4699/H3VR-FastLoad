@@ -1,0 +1,12 @@
+wait items
+wait 8
+iconlook 12
+iconlook 12
+iconlook 12
+iconlook 12
+iconlook 12
+iconlook 12
+iconlook 12
+iconlook 12
+iconhold
+quit

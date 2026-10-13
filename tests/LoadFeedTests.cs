@@ -63,6 +63,21 @@ namespace FastLoad.Tests
             LoadFeed.Line(31000, 300, out text);
             T.Eq("Loading icarus lmg from Nuigo-Surplus   1/2", text, "the batch is back when the map is in, its count untouched");
             LoadFeed.End(item, 31100);
+
+            // The clean line: background loads are not in it, waited-for ones are, counted among themselves.
+            LoadFeed.Reset();
+            LoadFeed.Begin("icarus lmg", "Nuigo-Surplus", false, false, 40000);
+            T.True(!LoadFeed.WaitedLine(41000, out text), "a background load alone gives no clean line");
+            LoadFeed.Expect(3, 41000);
+            int p1 = LoadFeed.Begin("mw_ar2_plus", "Not_Wolfie-AR2_Plus", true, true, 41000);
+            T.True(LoadFeed.WaitedLine(41100, out text), "a waited-for load does");
+            T.Eq("Loading mw_ar2_plus from Not_Wolfie-AR2_Plus   1/3", text, "counted among the waited-for loads only");
+            LoadFeed.End(p1, 41500);
+            int p2 = LoadFeed.Begin("mw_acr_v2", "Volks-ACR", true, true, 41500);
+            LoadFeed.WaitedLine(41600, out text);
+            T.Eq("Loading mw_acr_v2 from Volks-ACR   2/3", text, "second of three");
+            LoadFeed.End(p2, 42000);
+            T.True(!LoadFeed.WaitedLine(42100, out text), "nothing waited for = no line, though the background load still runs");
         }
     }
 }

@@ -58,12 +58,149 @@ namespace FastLoad
         private int m_runtimeMade;
         private long m_dropped;
 
+        private bool m_hooked;
+        /// <summary>Texture of each known sprite, by the sprite's instance id.</summary>
+        private static readonly Dictionary<int, int> s_textureOfSprite = new Dictionary<int, int>();
+        /// <summary>Textures whose pixels are dropped right now, by instance id.</summary>
+        private static readonly Dictionary<int, bool> s_dropped = new Dictionary<int, bool>();
+        public static int BroughtBack;
+        /// <summary>Sprites that had no texture when first met, by instance id.</summary>
+        public static readonly Dictionary<int, bool> BornEmpty = new Dictionary<int, bool>();
+        /// <summary>Test switch: sprites are handed to images without their picture being read back in.</summary>
+        public static bool HookPaused;
+
+        /// <summary>Textures that must never be dropped: nothing on disk is open to read them back from.</summary>
+        private static readonly Dictionary<int, bool> s_keep = new Dictionary<int, bool>();
+        public static int KeptForClosedFiles;
+
+        private static void UnloadPre(AssetBundle __instance, bool unloadAllLoadedObjects)
+        {
+            try
+            {
+                // With "true" the sprites themselves go away with the file: nothing to protect.
+                if (unloadAllLoadedObjects || ReferenceEquals(__instance, null) || __instance == null) return;
+                // The spawner entries of this file are in memory already (the loader read them), so asking for them
+                // costs nothing; their icons are exactly the pictures that are about to lose their file. Icons are
+                // often parts of a texture and are not listed as sprites of the file, so asking for sprites is not enough.
+                int keptNow = 0, entries = 0;
+                string gone = "";
+                ItemSpawnerID[] ids = __instance.LoadAllAssets<ItemSpawnerID>();
+                for (int i = 0; ids != null && i < ids.Length; i++)
+                {
+                    if (ids[i] == null) continue;
+                    entries++;
+                    Protect(ids[i].Sprite, ref keptNow, ref gone);
+                }
+                IconGovernor me = Instance;
+                if (me != null && !ReferenceEquals(me.m_entryIcon, null))
+                {
+                    UnityEngine.Object[] more = __instance.LoadAllAssets(me.m_entryType);
+                    for (int i = 0; more != null && i < more.Length; i++)
+                    {
+                        if (more[i] == null) continue;
+                        entries++;
+                        Protect(me.m_entryIcon.GetValue(more[i]) as Sprite, ref keptNow, ref gone);
+                    }
+                }
+                Sprite[] sprites = __instance.LoadAllAssets<Sprite>();
+                for (int i = 0; sprites != null && i < sprites.Length; i++) Protect(sprites[i], ref keptNow, ref gone);
+                // And by name: an icon that is not reached through an entry of this file but is one of its files
+                // ("backpack" from ".../backpack.png"). A same-named icon of another mod gets kept too; that only costs memory.
+                if (me != null)
+                {
+                    string[] assetNames = __instance.GetAllAssetNames();
+                    Dictionary<string, bool> files = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                    for (int i = 0; assetNames != null && i < assetNames.Length; i++)
+                    {
+                        string file = System.IO.Path.GetFileNameWithoutExtension(assetNames[i] ?? "");
+                        if (file.Length > 0) files[file] = true;
+                    }
+                    if (files.Count > 0)
+                    {
+                        foreach (Sprite known in me.m_known.Values)
+                        {
+                            if (ReferenceEquals(known, null) || known == null) continue;
+                            if (files.ContainsKey(known.name)) Protect(known, ref keptNow, ref gone);
+                        }
+                    }
+                }
+                Timeline.Write("ICO", "file '" + __instance.name + "' is closing with its contents kept: " + entries + " spawner entries, " + (sprites != null ? sprites.Length : 0)
+                    + " sprites, " + keptNow + " pictures now protected" + (gone.Length > 0 ? ", NO PICTURE for:" + gone : ""));
+            }
+            catch (Exception)
+            {
+            }
+        }
+
+        private static void Protect(Sprite sprite, ref int keptNow, ref string gone)
+        {
+            if (ReferenceEquals(sprite, null) || sprite == null) return;
+            // The file is still open here: a dropped picture comes back with this.
+            Texture2D t = sprite.texture;
+            if (ReferenceEquals(t, null) || t == null)
+            {
+                gone += " '" + sprite.name + "'";
+                return;
+            }
+            int tid = t.GetInstanceID();
+            if (s_keep.ContainsKey(tid)) return;
+            s_keep[tid] = true;
+            s_dropped.Remove(tid);
+            KeptForClosedFiles++;
+            keptNow++;
+            IconGovernor g = Instance;
+            if (g != null) g.m_loaded.Remove(tid);
+        }
+
+        private static void SpritePre(Sprite value)
+        {
+            try
+            {
+                if (HookPaused || ReferenceEquals(value, null) || s_dropped.Count == 0) return;
+                int tid;
+                if (!s_textureOfSprite.TryGetValue(value.GetInstanceID(), out tid) || !s_dropped.ContainsKey(tid)) return;
+                s_dropped.Remove(tid);
+                // Asking for it is what reads it back in.
+                Texture2D t = value.texture;
+                BroughtBack++;
+                IconGovernor g = Instance;
+                if (g != null && !ReferenceEquals(t, null) && t != null)
+                {
+                    g.m_loaded[tid] = t;
+                    g.m_shownAt[tid] = g.m_clock.Elapsed.TotalSeconds;
+                }
+            }
+            catch (Exception)
+            {
+            }
+        }
+
         public int Known { get { return m_known.Count; } }
         public long Dropped { get { return m_dropped; } }
 
         private void Awake()
         {
             Instance = this;
+            // A dropped picture does not come back by being drawn (measured: a material or UI image keeps showing
+            // nothing until it is given the texture again). So: the moment any UI image is handed one of these
+            // sprites, its picture is read back in, before the image looks at it.
+            try
+            {
+                MethodInfo set = typeof(Image).GetProperty("sprite").GetSetMethod();
+                new HarmonyLib.Harmony("invent60.h3vr.fastload.icons").Patch(set, new HarmonyLib.HarmonyMethod(typeof(IconGovernor).GetMethod("SpritePre", BindingFlags.NonPublic | BindingFlags.Static)));
+                // A mod file that is closed while its contents stay in memory (OtherLoader does this for 29 older mods
+                // on the test profile) leaves pictures that can never be read back: dropping one loses it for good and
+                // its icon turns into a white square. Seen: sprite 'Badge ftw', texture gone. So just before such a
+                // file closes, every sprite in it is marked "keep", and read back in first if it was dropped already.
+                MethodInfo unload = typeof(AssetBundle).GetMethod("Unload", new Type[] { typeof(bool) });
+                new HarmonyLib.Harmony("invent60.h3vr.fastload.icons.keep").Patch(unload, new HarmonyLib.HarmonyMethod(typeof(IconGovernor).GetMethod("UnloadPre", BindingFlags.NonPublic | BindingFlags.Static)));
+                m_hooked = true;
+            }
+            catch (Exception)
+            {
+                // Without the hook nothing may be dropped: Update checks m_hooked.
+                m_hooked = false;
+            }
             m_items = new ItemsLoadedWatch();
             BepInEx.Logging.Logger.Listeners.Add(m_items);
             SceneManager.sceneLoaded += OnSceneLoaded;
@@ -80,6 +217,7 @@ namespace FastLoad
         {
             try
             {
+                if (!m_hooked) return;
                 if (m_queue.Count > 0)
                 {
                     Drain();
@@ -126,7 +264,7 @@ namespace FastLoad
             for (int i = 0; i < ids.Length; i++)
             {
                 ItemSpawnerID id = ids[i] as ItemSpawnerID;
-                if (!ReferenceEquals(id, null) && id != null && Meet(id.Sprite)) fresh++;
+                if (!ReferenceEquals(id, null) && id != null && Meet(id.Sprite, id.GetInstanceID() > 0)) fresh++;
             }
             if (!m_entryLooked) FindEntryType();
             if (!ReferenceEquals(m_entryIcon, null))
@@ -134,7 +272,7 @@ namespace FastLoad
                 UnityEngine.Object[] entries = Resources.FindObjectsOfTypeAll(m_entryType);
                 for (int i = 0; i < entries.Length; i++)
                 {
-                    if (entries[i] != null && Meet(m_entryIcon.GetValue(entries[i]) as Sprite)) fresh++;
+                    if (entries[i] != null && Meet(m_entryIcon.GetValue(entries[i]) as Sprite, entries[i].GetInstanceID() > 0)) fresh++;
                 }
             }
             return fresh;
@@ -162,14 +300,40 @@ namespace FastLoad
         }
 
         /// <summary>True when this sprite is new and its picture can be dropped.</summary>
-        private bool Meet(Sprite sprite)
+        /// <summary>Sprites whose picture may be dropped only once an owner that is a file's own asset has been seen.</summary>
+        private readonly Dictionary<int, bool> m_waitingForAssetOwner = new Dictionary<int, bool>();
+
+        /// <summary>
+        /// True when this sprite's picture has just become droppable.
+        /// ownerIsAsset: the spawner entry holding it came out of a mod file (positive instance id). An entry made
+        /// while the game runs (loaders build some from older data) says nothing about where its icon's file is or
+        /// whether it is still open, and only entries from files are covered by the "file is closing" protection.
+        /// An icon held only by such entries is never dropped. Seen: sprite 'backpack', lost for good before this rule.
+        /// </summary>
+        private bool Meet(Sprite sprite, bool ownerIsAsset)
         {
             if (ReferenceEquals(sprite, null) || sprite == null) return false;
             int id = sprite.GetInstanceID();
-            if (m_known.ContainsKey(id)) return false;
+            if (m_known.ContainsKey(id))
+            {
+                if (!ownerIsAsset || !m_waitingForAssetOwner.ContainsKey(id)) return false;
+                m_waitingForAssetOwner.Remove(id);
+                int known;
+                if (!s_textureOfSprite.TryGetValue(id, out known) || s_keep.ContainsKey(known)) return false;
+                // Never dropped so far, so asking reads nothing.
+                Texture2D now = sprite.texture;
+                if (ReferenceEquals(now, null) || now == null) return false;
+                m_loaded[known] = now;
+                return true;
+            }
             m_known[id] = sprite;
             Texture2D t = sprite.texture;
-            if (ReferenceEquals(t, null) || t == null) return false;
+            if (ReferenceEquals(t, null) || t == null)
+            {
+                // Came without a picture: nothing of ours.
+                BornEmpty[id] = true;
+                return false;
+            }
             int tid = t.GetInstanceID();
             if (tid < 0)
             {
@@ -177,32 +341,48 @@ namespace FastLoad
                 m_runtimeMade++;
                 return false;
             }
+            s_textureOfSprite[id] = tid;
+            if (s_keep.ContainsKey(tid)) return false;
+            if (!ownerIsAsset)
+            {
+                m_waitingForAssetOwner[id] = true;
+                return false;
+            }
             m_loaded[tid] = t;
             return true;
         }
 
-        /// <summary>Instance ids of the icon textures something on screen is showing right now.</summary>
+        /// <summary>
+        /// Instance ids of the icon textures some UI image or sprite renderer holds right now, shown or hidden.
+        /// Hidden ones count: an image that keeps its sprite while its panel is switched off would come back as a
+        /// blank square if the picture were dropped meanwhile (it is only read back in when a sprite is handed over).
+        /// </summary>
         private Dictionary<int, bool> Shown()
         {
             Dictionary<int, bool> shown = new Dictionary<int, bool>();
             if (m_known.Count == 0) return shown;
-            Image[] images = FindObjectsOfType<Image>();
-            for (int i = 0; i < images.Length; i++) See(images[i].sprite, shown);
-            SpriteRenderer[] renderers = FindObjectsOfType<SpriteRenderer>();
-            for (int i = 0; i < renderers.Length; i++) See(renderers[i].sprite, shown);
+            UnityEngine.Object[] images = Resources.FindObjectsOfTypeAll(typeof(Image));
+            for (int i = 0; i < images.Length; i++)
+            {
+                Image img = images[i] as Image;
+                if (!ReferenceEquals(img, null) && img != null) See(img.sprite, shown);
+            }
+            UnityEngine.Object[] renderers = Resources.FindObjectsOfTypeAll(typeof(SpriteRenderer));
+            for (int i = 0; i < renderers.Length; i++)
+            {
+                SpriteRenderer sr = renderers[i] as SpriteRenderer;
+                if (!ReferenceEquals(sr, null) && sr != null) See(sr.sprite, shown);
+            }
             return shown;
         }
 
         private void See(Sprite sprite, Dictionary<int, bool> shown)
         {
-            if (ReferenceEquals(sprite, null) || sprite == null || !m_known.ContainsKey(sprite.GetInstanceID())) return;
-            // On screen, so its pixels are in memory already: asking costs nothing.
-            Texture2D t = sprite.texture;
-            if (ReferenceEquals(t, null) || t == null) return;
-            int tid = t.GetInstanceID();
-            if (tid < 0) return;
+            if (ReferenceEquals(sprite, null) || sprite == null) return;
+            int tid;
+            // By the id noted when the sprite was first met: asking the sprite for its texture would read it back in.
+            if (!s_textureOfSprite.TryGetValue(sprite.GetInstanceID(), out tid)) return;
             shown[tid] = true;
-            m_loaded[tid] = t;
         }
 
         /// <summary>A picture something outside this class read back in (tests).</summary>
@@ -244,7 +424,7 @@ namespace FastLoad
             if (m_queue.Count == 0) return "nothing to drop";
             m_queueCommit = Memory.Commit();
             m_queueDropped = 0;
-            m_queueWhy = why + "; new=" + fresh + " scan=" + (int)scanMs + "ms known=" + m_known.Count + " onScreen=" + shown.Count + " madeAtRunTime=" + m_runtimeMade;
+            m_queueWhy = why + "; heldOnlyByRunTimeEntries=" + m_waitingForAssetOwner.Count + " new=" + fresh + " scan=" + (int)scanMs + "ms known=" + m_known.Count + " onScreen=" + shown.Count + " madeAtRunTime=" + m_runtimeMade;
             return "queued " + m_queue.Count + " item pictures to drop";
         }
 
@@ -255,7 +435,8 @@ namespace FastLoad
             while (m_queue.Count > 0 && sw.Elapsed.TotalMilliseconds < Unloading.FrameBudgetMs)
             {
                 Texture2D t = m_queue.Dequeue();
-                if (t == null) continue;
+                if (t == null || s_keep.ContainsKey(t.GetInstanceID())) continue;
+                s_dropped[t.GetInstanceID()] = true;
                 Resources.UnloadAsset(t);
                 m_queueDropped++;
             }

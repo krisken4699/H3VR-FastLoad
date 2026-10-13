@@ -1,0 +1,19 @@
+wait items
+wait 8
+spawn ModulAeroM4E1
+wait 4
+look                             # healthy
+droptex                          # what the texture governor does
+wait 2
+look                             # black?
+touch get
+wait 2
+look
+touch size
+wait 2
+look
+touch rebind
+wait 2
+look
+clear
+quit

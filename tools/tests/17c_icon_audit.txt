@@ -1,0 +1,5 @@
+wait items
+wait 10
+iconaudit
+wait 4
+quit

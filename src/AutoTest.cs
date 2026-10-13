@@ -190,6 +190,12 @@ namespace FastLoad
                     else if (verb == "inputoff") m_note = InputOff();
                     else if (verb == "steamvroff") m_note = SteamVrOff();
                     else if (verb == "hands") m_note = HandsNow();
+                    else if (verb == "look") m_note = Look();
+                    else if (verb == "iconlook") m_note = IconLook(rest);
+                    else if (verb == "iconaudit") m_note = IconAudit();
+                    else if (verb == "iconhold") m_step = new IconHoldStep(this);
+                    else if (verb == "droptex") m_note = DropTextures();
+                    else if (verb == "touch") m_note = Touch(rest);
                     else if (verb == "guard") { HandGuard.Paused = rest == "off"; m_note = "hand guard " + (HandGuard.Paused ? "watching only" : "repairing"); }
                     else if (verb == "directscene") m_step = new DirectSceneStep(rest);
                     else if (verb == "roots") m_note = Roots();
@@ -396,6 +402,384 @@ namespace FastLoad
             flat.y = 0f;
             if (flat.sqrMagnitude < 0.01f) flat = Vector3.forward;
             return head.position + flat.normalized * distance + Vector3.up * up;
+        }
+
+        private static readonly string[] TexSlots = new string[] { "_MainTex", "_BumpMap", "_MetallicGlossMap", "_SpecGlossMap", "_OcclusionMap", "_EmissionMap",
+            "_DetailAlbedoMap", "_DetailNormalMap", "_DetailMask", "_ParallaxMap", "_SpecTex", "_MaterialMap", "_PackedMap", "_BumpMap2", "_MainTex2", "_MaterialMap2",
+            "_EmissionMap2", "_DecalTex", "_Illum", "_Detail", "_IncandescenceMap", "_RimTex", "_Rma", "_MaskTex", "_NormalMap", "_AlloyPM", "_BaseColor" };
+
+        private GameObject LastMade()
+        {
+            for (int i = m_made.Count - 1; i >= 0; i--) if (m_made[i] != null) return m_made[i];
+            return null;
+        }
+
+        /// <summary>
+        /// A small picture of the last spawned thing, taken by a camera of its own against a magenta backdrop:
+        /// how much of the picture it covers and how bright it is. A gun whose textures are gone is black.
+        /// </summary>
+        private string Look()
+        {
+            GameObject go = LastMade();
+            if (go == null) return "NOTHING SPAWNED";
+            Renderer[] rs = go.GetComponentsInChildren<Renderer>(false);
+            if (rs.Length == 0) return "NO RENDERERS";
+            Bounds b = rs[0].bounds;
+            for (int i = 1; i < rs.Length; i++) if (!(rs[i] is ParticleSystemRenderer)) b.Encapsulate(rs[i].bounds);
+            float size = Mathf.Max(0.1f, b.extents.magnitude);
+            GameObject camGo = new GameObject("FastLoad test camera");
+            Camera cam = camGo.AddComponent<Camera>();
+            cam.enabled = false;
+            cam.stereoTargetEye = StereoTargetEyeMask.None;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(1f, 0f, 1f, 1f);
+            cam.nearClipPlane = 0.02f;
+            cam.farClipPlane = size * 6f + 2f;
+            cam.fieldOfView = 40f;
+            camGo.transform.position = b.center + new Vector3(0.6f, 0.4f, 0.7f).normalized * (size * 2.4f);
+            camGo.transform.LookAt(b.center);
+            RenderTexture rt = RenderTexture.GetTemporary(96, 96, 24, RenderTextureFormat.ARGB32);
+            cam.targetTexture = rt;
+            // Only the thing itself in the picture: it goes on a layer of its own for the one render.
+            Transform[] parts = go.GetComponentsInChildren<Transform>(true);
+            int[] layers = new int[parts.Length];
+            for (int i = 0; i < parts.Length; i++)
+            {
+                layers[i] = parts[i].gameObject.layer;
+                parts[i].gameObject.layer = 31;
+            }
+            cam.cullingMask = 1 << 31;
+            try
+            {
+                cam.Render();
+            }
+            finally
+            {
+                for (int i = 0; i < parts.Length; i++) if (parts[i] != null) parts[i].gameObject.layer = layers[i];
+            }
+            RenderTexture before = RenderTexture.active;
+            RenderTexture.active = rt;
+            Texture2D read = new Texture2D(96, 96, TextureFormat.RGBA32, false);
+            read.ReadPixels(new Rect(0, 0, 96, 96), 0, 0);
+            RenderTexture.active = before;
+            Color32[] px = read.GetPixels32();
+            int covered = 0, dark = 0;
+            long lum = 0;
+            for (int i = 0; i < px.Length; i++)
+            {
+                Color32 c = px[i];
+                // The backdrop: strong red and blue, no green.
+                if (c.r > 200 && c.b > 200 && c.g < 60) continue;
+                covered++;
+                int l = (c.r * 2 + c.g * 5 + c.b) / 8;
+                lum += l;
+                if (l < 12) dark++;
+            }
+            cam.targetTexture = null;
+            RenderTexture.ReleaseTemporary(rt);
+            Destroy(read);
+            Destroy(camGo);
+            if (covered == 0) return "OBJECT NOT IN THE PICTURE";
+            return go.name + ": covers " + (covered * 100 / px.Length) + "% of the picture, brightness " + (lum / covered) + "/255, near-black " + (dark * 100 / covered) + "% of it";
+        }
+
+        /// <summary>
+        /// "iconlook 12 [nohook]": puts 12 item-spawner icons on UI images of a test canvas, the way the spawner does
+        /// (image.sprite = icon), takes a picture of the canvas alone and says how much of it is not blank.
+        /// With "nohook" the pictures are not read back in when the sprite is handed over: what a spawner page
+        /// looked like before the fix.
+        /// </summary>
+        private string IconLook(string rest)
+        {
+            IconGovernor g = IconGovernor.Instance;
+            if (g == null) return "ITEM ICONS ON DEMAND IS OFF";
+            string[] parts = rest.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            int count = parts.Length > 0 ? int.Parse(parts[0], CultureInfo.InvariantCulture) : 12;
+            bool noHook = parts.Length > 1 && parts[1] == "nohook";
+            List<Sprite> sprites = g.KnownSprites();
+            if (sprites.Count == 0) return "NO ICONS KNOWN";
+            int before = IconGovernor.BroughtBack;
+
+            GameObject root = new GameObject("FastLoad test canvas");
+            root.layer = 31;
+            Canvas canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.WorldSpace;
+            RectTransform rtf = root.GetComponent<RectTransform>();
+            rtf.sizeDelta = new Vector2(400f, 300f);
+            root.transform.position = new Vector3(0f, -200f, 0f);
+            root.transform.localScale = Vector3.one * 0.01f;
+            int step = Math.Max(1, sprites.Count / count);
+            int made = 0;
+            IconGovernor.HookPaused = noHook;
+            try
+            {
+                for (int i = m_iconCursor; i < sprites.Count && made < count; i += step)
+                {
+                    if (sprites[i] == null) continue;
+                    GameObject cell = new GameObject("icon");
+                    cell.layer = 31;
+                    cell.transform.SetParent(root.transform, false);
+                    UnityEngine.UI.Image img = cell.AddComponent<UnityEngine.UI.Image>();
+                    RectTransform r = cell.GetComponent<RectTransform>();
+                    r.sizeDelta = new Vector2(90f, 90f);
+                    r.anchoredPosition = new Vector2(-150f + (made % 4) * 100f, 100f - (made / 4) * 100f);
+                    img.sprite = sprites[i];
+                    made++;
+                }
+            }
+            finally
+            {
+                IconGovernor.HookPaused = false;
+            }
+            // Other icons next time, so one call does not warm up the next.
+            m_iconCursor += 7;
+            string result = made + " icons on a test canvas" + (noHook ? " WITHOUT reading them back" : "") + ": " + PictureOf(root, made)
+                + "; read back by the hook during this: " + (IconGovernor.BroughtBack - before);
+            Destroy(root);
+            return result;
+        }
+
+        /// <summary>Takes a picture of a test canvas alone and counts which of its icon squares show a picture.</summary>
+        private static string PictureOf(GameObject root, int made)
+        {
+            Canvas.ForceUpdateCanvases();
+
+            GameObject camGo = new GameObject("FastLoad test camera");
+            Camera cam = camGo.AddComponent<Camera>();
+            cam.enabled = false;
+            cam.stereoTargetEye = StereoTargetEyeMask.None;
+            cam.clearFlags = CameraClearFlags.SolidColor;
+            cam.backgroundColor = new Color(1f, 0f, 1f, 1f);
+            cam.orthographic = true;
+            cam.orthographicSize = 1.6f;
+            cam.nearClipPlane = 0.1f;
+            cam.farClipPlane = 10f;
+            cam.cullingMask = 1 << 31;
+            camGo.transform.position = root.transform.position + new Vector3(0f, 0f, -3f);
+            camGo.transform.rotation = Quaternion.identity;
+            RenderTexture rt = RenderTexture.GetTemporary(128, 96, 24, RenderTextureFormat.ARGB32);
+            cam.targetTexture = rt;
+            cam.Render();
+            RenderTexture was = RenderTexture.active;
+            RenderTexture.active = rt;
+            Texture2D read = new Texture2D(128, 96, TextureFormat.RGBA32, false);
+            read.ReadPixels(new Rect(0, 0, 128, 96), 0, 0);
+            RenderTexture.active = was;
+            Color32[] px = read.GetPixels32();
+            // Each icon's square by itself: a picture has light and dark in it, a square with no picture is one flat colour.
+            int flat = 0, pictures = 0, missing = 0;
+            for (int n = 0; n < made; n++)
+            {
+                // Canvas units to pixels: 300 units = 3 world units = 90 of the 96 pixel rows (orthographic size 1.6).
+                float cx = (-150f + (n % 4) * 100f) * 0.01f, cy = (100f - (n / 4) * 100f) * 0.01f;
+                int px0 = 64 + (int)(cx * 30f), py0 = 48 + (int)(cy * 30f);
+                double sum = 0, sumSq = 0;
+                int k = 0;
+                for (int y = py0 - 9; y <= py0 + 9; y++)
+                {
+                    for (int x = px0 - 9; x <= px0 + 9; x++)
+                    {
+                        if (x < 0 || y < 0 || x >= 128 || y >= 96) continue;
+                        Color32 c = px[y * 128 + x];
+                        if (c.r > 200 && c.b > 200 && c.g < 60) continue;
+                        double l = (c.r * 2 + c.g * 5 + c.b) / 8.0;
+                        sum += l;
+                        sumSq += l * l;
+                        k++;
+                    }
+                }
+                if (k < 50) { missing++; continue; }
+                double mean = sum / k;
+                double dev = Math.Sqrt(Math.Max(0, sumSq / k - mean * mean));
+                if (dev < 2.0)
+                {
+                    flat++;
+                    // Which one, and is its texture there at all: a flat square can be a missing picture or simply a plain icon.
+                    try
+                    {
+                        UnityEngine.UI.Image[] imgs = root.GetComponentsInChildren<UnityEngine.UI.Image>(true);
+                        if (n < imgs.Length && imgs[n].sprite != null)
+                        {
+                            Sprite sp = imgs[n].sprite;
+                            Texture2D tx = sp.texture;
+                            s_flatNotes += " [flat: sprite '" + sp.name + "' texture " + (ReferenceEquals(tx, null) ? "null" : tx == null ? "DEAD" : "'" + tx.name + "' " + tx.width + "x" + tx.height
+                                + " id" + (tx.GetInstanceID() > 0 ? "+" : "-")) + " rect " + (int)sp.rect.width + "x" + (int)sp.rect.height + " colour " + (int)mean + "]";
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        s_flatNotes += " [flat: " + e.GetType().Name + "]";
+                    }
+                }
+                else pictures++;
+            }
+            cam.targetTexture = null;
+            RenderTexture.ReleaseTemporary(rt);
+            Destroy(read);
+            Destroy(camGo);
+            string notes = s_flatNotes;
+            s_flatNotes = "";
+            return pictures + " show a picture, " + flat + " are a flat square, " + missing + " not drawn" + notes + " (kept for closed files so far: " + IconGovernor.KeptForClosedFiles + ")";
+        }
+
+        /// <summary>
+        /// What a spawner page goes through: 12 icons on images, the panel is switched off for a while (with the
+        /// idle time at nothing, so the governor drops whatever it thinks is free), then switched on again.
+        /// </summary>
+        private sealed class IconHoldStep : Step
+        {
+            private readonly GameObject m_root;
+            private readonly Stopwatch m_sw = Stopwatch.StartNew();
+            private readonly double m_idleWas;
+            private readonly string m_first;
+            private readonly long m_droppedBefore;
+            private int m_phase;
+
+            public IconHoldStep(AutoTest test)
+            {
+                IconGovernor g = IconGovernor.Instance;
+                if (g == null) { Note = "ITEM ICONS ON DEMAND IS OFF"; m_phase = 9; return; }
+                List<Sprite> sprites = g.KnownSprites();
+                m_root = new GameObject("FastLoad test canvas (hold)");
+                m_root.layer = 31;
+                Canvas canvas = m_root.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.WorldSpace;
+                m_root.GetComponent<RectTransform>().sizeDelta = new Vector2(400f, 300f);
+                m_root.transform.position = new Vector3(0f, -200f, 0f);
+                m_root.transform.localScale = Vector3.one * 0.01f;
+                int step = Math.Max(1, sprites.Count / 12);
+                int made = 0;
+                for (int i = 3; i < sprites.Count && made < 12; i += step)
+                {
+                    if (sprites[i] == null) continue;
+                    GameObject cell = new GameObject("icon");
+                    cell.layer = 31;
+                    cell.transform.SetParent(m_root.transform, false);
+                    UnityEngine.UI.Image img = cell.AddComponent<UnityEngine.UI.Image>();
+                    RectTransform r = cell.GetComponent<RectTransform>();
+                    r.sizeDelta = new Vector2(90f, 90f);
+                    r.anchoredPosition = new Vector2(-150f + (made % 4) * 100f, 100f - (made / 4) * 100f);
+                    img.sprite = sprites[i];
+                    made++;
+                }
+                m_first = PictureOf(m_root, 12);
+                m_idleWas = Unloading.IdleSeconds;
+                Unloading.IdleSeconds = 0.0;
+                m_droppedBefore = g.Dropped;
+                m_root.SetActive(false);
+            }
+
+            public override bool Tick(AutoTest test)
+            {
+                if (m_phase == 9) return true;
+                if (m_sw.Elapsed.TotalSeconds < 6.0) return false;
+                IconGovernor g = IconGovernor.Instance;
+                long dropped = g != null ? g.Dropped - m_droppedBefore : -1;
+                m_root.SetActive(true);
+                string second = PictureOf(m_root, 12);
+                Unloading.IdleSeconds = m_idleWas;
+                Destroy(m_root);
+                Note = "shown: " + m_first + " | hidden 6 s with no idle time (governor dropped " + dropped + " pictures meanwhile) | shown again: " + second;
+                return true;
+            }
+        }
+
+        /// <summary>Every known icon asked for its picture: how many have none left. Reads them all back in.</summary>
+        private static string IconAudit()
+        {
+            IconGovernor g = IconGovernor.Instance;
+            if (g == null) return "ITEM ICONS ON DEMAND IS OFF";
+            List<Sprite> sprites = g.KnownSprites();
+            int ok = 0, lost = 0, born = 0;
+            string names = "";
+            for (int i = 0; i < sprites.Count; i++)
+            {
+                if (sprites[i] == null) continue;
+                Texture2D t = sprites[i].texture;
+                if (!ReferenceEquals(t, null) && t != null) { ok++; g.Touched(t); continue; }
+                if (IconGovernor.BornEmpty.ContainsKey(sprites[i].GetInstanceID())) { born++; continue; }
+                lost++;
+                if (lost <= 20)
+                {
+                    names += " '" + sprites[i].name + "'";
+                    // Whose icon it is.
+                    UnityEngine.Object[] ids = Resources.FindObjectsOfTypeAll(typeof(ItemSpawnerID));
+                    for (int k = 0; k < ids.Length; k++)
+                    {
+                        ItemSpawnerID sid = ids[k] as ItemSpawnerID;
+                        if (sid == null || !ReferenceEquals(sid.Sprite, sprites[i])) continue;
+                        names += "(item " + sid.ItemID + ", bundle " + (sid.MainObject != null ? ItemBundle(sid.MainObject) : "?") + ", entry '" + sid.name + "')";
+                    }
+                }
+            }
+            return "of " + (ok + lost + born) + " icons " + born + " came without a picture, " + lost + " have lost their picture for good" + (lost > 0 ? ":" + names : "") + "; protected for closed files: " + IconGovernor.KeptForClosedFiles;
+        }
+
+        private int m_iconCursor;
+        private static string s_flatNotes = "";
+
+        private List<KeyValuePair<Material, int>> SlotsOfLast(out int materials)
+        {
+            List<KeyValuePair<Material, int>> list = new List<KeyValuePair<Material, int>>();
+            Dictionary<int, bool> seen = new Dictionary<int, bool>();
+            materials = 0;
+            GameObject go = LastMade();
+            if (go == null) return list;
+            Renderer[] rs = go.GetComponentsInChildren<Renderer>(true);
+            for (int r = 0; r < rs.Length; r++)
+            {
+                Material[] mats = rs[r].sharedMaterials;
+                for (int m = 0; m < mats.Length; m++)
+                {
+                    if (mats[m] == null || seen.ContainsKey(mats[m].GetInstanceID())) continue;
+                    seen[mats[m].GetInstanceID()] = true;
+                    materials++;
+                    for (int k = 0; k < TexSlots.Length; k++)
+                    {
+                        int id = Shader.PropertyToID(TexSlots[k]);
+                        if (mats[m].HasProperty(id)) list.Add(new KeyValuePair<Material, int>(mats[m], id));
+                    }
+                }
+            }
+            return list;
+        }
+
+        /// <summary>Drops every texture found on the last spawned thing's materials, as the texture governor would.</summary>
+        private string DropTextures()
+        {
+            int materials;
+            List<KeyValuePair<Material, int>> slots = SlotsOfLast(out materials);
+            Dictionary<int, bool> done = new Dictionary<int, bool>();
+            int dropped = 0, runtime = 0, empty = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                Texture t = slots[i].Key.GetTexture(slots[i].Value);
+                if (ReferenceEquals(t, null) || t == null) { empty++; continue; }
+                if (done.ContainsKey(t.GetInstanceID())) continue;
+                done[t.GetInstanceID()] = true;
+                if (t.GetInstanceID() < 0) { runtime++; continue; }
+                Resources.UnloadAsset(t);
+                dropped++;
+            }
+            return "dropped " + dropped + " textures of " + materials + " materials (" + slots.Count + " slots, " + empty + " empty, " + runtime + " made at run time)";
+        }
+
+        /// <summary>Ways a dropped texture might be brought back: "get" asks the material for it, "rebind" also sets it again, "size" also reads its size.</summary>
+        private string Touch(string how)
+        {
+            int materials;
+            List<KeyValuePair<Material, int>> slots = SlotsOfLast(out materials);
+            int got = 0, nulls = 0, fake = 0;
+            for (int i = 0; i < slots.Count; i++)
+            {
+                Texture t = slots[i].Key.GetTexture(slots[i].Value);
+                if (ReferenceEquals(t, null)) { nulls++; continue; }
+                if (t == null) { fake++; continue; }
+                got++;
+                if (how == "size") { int w = t.width; if (w < 0) got--; }
+                if (how == "rebind") slots[i].Key.SetTexture(slots[i].Value, t);
+            }
+            return "touch " + how + ": " + got + " textures answered, " + fake + " slots hold a dead reference, " + nulls + " slots empty";
         }
 
         private string HandsNow()

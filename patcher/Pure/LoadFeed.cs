@@ -34,6 +34,10 @@ namespace FastLoad.Early
         private static int s_idleSinceMs = -1;
         private static int s_burstStartMs;
         private static int s_urgent;
+        // The same batch counting, for waited-for loads only.
+        private static int s_uTotal;
+        private static int s_uDone;
+        private static int s_uIdleSinceMs = -1;
 
         /// <summary>Loads in flight that someone is waiting for (a gun that cannot appear before they are done).</summary>
         public static int UrgentActive
@@ -53,6 +57,9 @@ namespace FastLoad.Early
                 s_credit = 0;
                 s_idleSinceMs = -1;
                 s_urgent = 0;
+                s_uTotal = 0;
+                s_uDone = 0;
+                s_uIdleSinceMs = -1;
             }
             finally
             {
@@ -70,6 +77,48 @@ namespace FastLoad.Early
             s_burstStartMs = nowMs;
         }
 
+        private static void UrgentFresh(int nowMs, int add)
+        {
+            if (s_urgent == 0 && (s_uIdleSinceMs < 0 || nowMs - s_uIdleSinceMs >= BurstGapMs) && s_credit <= add)
+            {
+                s_uTotal = 0;
+                s_uDone = 0;
+            }
+            s_uTotal += add;
+        }
+
+        /// <summary>
+        /// The line for a player who wants a clean view: the map on its way, and loads something is waiting for (the
+        /// part packs of a gun being spawned). Background loading, like the item lists after game start, is left out.
+        /// </summary>
+        public static bool WaitedLine(int nowMs, out string text)
+        {
+            text = "";
+            Monitor.Enter(s_gate);
+            try
+            {
+                if (s_alone.Count > 0)
+                {
+                    text = "Loading " + s_alone[0].What;
+                    return true;
+                }
+                for (int i = 0; i < s_active.Count; i++)
+                {
+                    Task t = s_active[i];
+                    if (!t.Urgent) continue;
+                    text = "Loading " + t.What;
+                    if (t.Mod.Length > 0 && t.Mod[0] != '(') text += " from " + t.Mod;
+                    if (s_uTotal > 1) text += "   " + Math.Min(s_uDone + 1, s_uTotal) + "/" + s_uTotal;
+                    return true;
+                }
+                return false;
+            }
+            finally
+            {
+                Monitor.Exit(s_gate);
+            }
+        }
+
         /// <summary>This many loads are about to begin, one after another: the count can show the real total from the start.</summary>
         public static void Expect(int count, int nowMs)
         {
@@ -80,6 +129,8 @@ namespace FastLoad.Early
                 Fresh(nowMs);
                 s_total += count;
                 s_credit += count;
+                // Only waited-for loads are announced.
+                UrgentFresh(nowMs, count);
             }
             finally
             {
@@ -96,7 +147,11 @@ namespace FastLoad.Early
             {
                 Fresh(nowMs);
                 if (announced && s_credit > 0) s_credit--;
-                else s_total++;
+                else
+                {
+                    s_total++;
+                    if (urgent) UrgentFresh(nowMs, 1);
+                }
                 Task t = new Task();
                 t.Token = s_nextToken++;
                 t.What = what ?? "";
@@ -150,7 +205,12 @@ namespace FastLoad.Early
                 for (int i = 0; i < s_active.Count; i++)
                 {
                     if (s_active[i].Token != token) continue;
-                    if (s_active[i].Urgent) s_urgent--;
+                    if (s_active[i].Urgent)
+                    {
+                        s_urgent--;
+                        s_uDone++;
+                        if (s_urgent == 0) s_uIdleSinceMs = nowMs;
+                    }
                     s_active.RemoveAt(i);
                     s_done++;
                     if (s_active.Count == 0) s_idleSinceMs = nowMs;

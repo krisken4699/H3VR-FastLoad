@@ -1,0 +1,7 @@
+wait items
+wait 10
+iconlook 12                      # dropped pictures handed to UI images: do they show
+iconhold                         # a page shown, its panel hidden while the governor runs, shown again
+iconlook 12
+wait 3
+quit
