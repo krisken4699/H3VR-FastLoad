@@ -117,14 +117,10 @@ namespace FastLoad
             }
 
             ConfigEntry<bool> textures = Config.Bind("OnDemand", "Textures", false,
-                "OFF BY DEFAULT, NOT SAFE YET: with this on, modular guns came out pitch black (2026-10-13). A texture dropped this way does not
-"
-                + "come back by being drawn; every material using it has to be handed the texture again, and that part is not built.
-"
-                + "What it is meant to do, for when it is:
-"
-                + "
-                "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
+                "OFF BY DEFAULT, NOT SAFE YET: with this on, modular guns came out pitch black (2026-10-13). A texture dropped this way does not\n"
+                + "come back by being drawn; every material using it has to be handed the texture again, and that part is not built.\n"
+                + "What it is meant to do, for when it is:\n"
+                + "Mod loaders read whole mod files to get at a few things in them. Spawning one modular rifle loaded every part pack for its\n"
                 + "platform in full on the profile this was built on: 8600 textures, +31 GB, for the handful of parts on the gun.\n"
                 + "With this on, textures that nothing in the scene uses are dropped again a few seconds after they come in. Unity reads a dropped\n"
                 + "texture back from its mod file by itself when something shows it (a part you pick in the workshop, a gun you spawn).\n"
