@@ -1,0 +1,8 @@
+wait items
+wait 10
+hands                            # in the range
+scene MainMenu3                  # back to the menu the way a player does
+wait 15
+hands
+roots
+quit

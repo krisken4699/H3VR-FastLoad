@@ -150,6 +150,13 @@ namespace FastLoad
                     bp.enabled = false;
                     bp.poseAction = h.Pose;
                     bp.enabled = true;
+                    // When this hand goes away with its scene, take its listeners off that action ourselves: if anything
+                    // swaps the action again while the component is on, Unity's own OnDisable only lets go of the new
+                    // one, and the destroyed hand stays on h.Pose. Its errors then stop the next scene's hands
+                    // (seen 2026-10-14: back to the menu, hands dead, an error every frame).
+                    PoseUnhook unhook = bp.gameObject.GetComponent<PoseUnhook>();
+                    if (unhook == null) unhook = bp.gameObject.AddComponent<PoseUnhook>();
+                    unhook.Remember(bp, h.Pose);
                     m_repairs++;
                     Say("hand '" + h.name + "' was listening to " + has + " instead of " + wants + " and could not move; set right (repair " + m_repairs + " this run, scene "
                         + SceneManager.GetActiveScene().name + ")");
@@ -346,6 +353,57 @@ namespace FastLoad
         {
             Timeline.Write("HND", text);
             Log.LogInfo("Hands: " + text);
+        }
+    }
+
+    /// <summary>Sits next to a hand's pose component the guard re-bound; when the hand is destroyed, removes that component's listeners from every action it was given.</summary>
+    internal sealed class PoseUnhook : MonoBehaviour
+    {
+        private static readonly string[] Events = { "onUpdate", "onDeviceConnectedChanged", "onTrackingChanged", "onChange" };
+        private static readonly string[] Handlers = { "SteamVR_Behaviour_Pose_OnUpdate", "OnDeviceConnectedChanged", "OnTrackingChanged", "SteamVR_Behaviour_Pose_OnChange" };
+
+        private SteamVR_Behaviour_Pose m_pose;
+        private readonly List<SteamVR_Action_Pose> m_actions = new List<SteamVR_Action_Pose>();
+
+        public void Remember(SteamVR_Behaviour_Pose pose, SteamVR_Action_Pose action)
+        {
+            m_pose = pose;
+            if (action != null && !m_actions.Contains(action)) m_actions.Add(action);
+        }
+
+        private void OnDestroy()
+        {
+            if (ReferenceEquals(m_pose, null)) return;
+            int removed = 0;
+            for (int a = 0; a < m_actions.Count; a++)
+            {
+                object source;
+                try
+                {
+                    source = m_actions[a][m_pose.inputSource];
+                }
+                catch (Exception)
+                {
+                    continue;
+                }
+                if (source == null) continue;
+                for (int e = 0; e < Events.Length; e++)
+                {
+                    try
+                    {
+                        System.Reflection.EventInfo ev = source.GetType().GetEvent(Events[e]);
+                        if (ReferenceEquals(ev, null)) continue;
+                        Delegate d = Delegate.CreateDelegate(ev.EventHandlerType, m_pose, Handlers[e], false, false);
+                        if (d == null) continue;
+                        ev.RemoveEventHandler(source, d);
+                        removed++;
+                    }
+                    catch (Exception)
+                    {
+                    }
+                }
+            }
+            Timeline.Write("HND", "re-bound hand '" + name + "' destroyed: " + removed + " listeners taken off its actions");
         }
     }
 }
