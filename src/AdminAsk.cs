@@ -93,6 +93,11 @@ namespace FastLoad
                         : "page file set to a fixed " + gb + " GB; Windows has not been restarted since (now " + (size / 1073741824L) + " GB)";
                     return;
                 }
+                if (File.Exists(Path.Combine(Path.Combine(Paths.BepInExRootPath, "FastLoad"), "autotest.txt")))
+                {
+                    Mode = "not asking during a scripted test run (page file now: " + current + ")";
+                    return;
+                }
                 string before = File.Exists(s_state) ? File.ReadAllText(s_state).Trim() : "";
                 if (before.Length > 0)
                 {

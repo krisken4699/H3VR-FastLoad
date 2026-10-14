@@ -1,0 +1,17 @@
+wait items
+wait 20
+profile 15 idle-range                    # nothing spawned
+spawn ModulAeroM4E1
+spawn M1911
+spawn ModulAK101Factory
+sosig M_Swat_Heavy iff=1
+sosig M_Swat_Heavy iff=1
+sosig M_Swat_Guard iff=1
+sosig M_Swat_Heavy iff=2
+sosig M_Swat_Heavy iff=2
+sosig M_Swat_Guard iff=2
+wait 8
+profile 20 fight                         # two teams of three shooting each other, three guns on the floor
+clear
+wait 3
+quit

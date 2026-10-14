@@ -92,7 +92,11 @@ namespace FastLoad
                 {
                     continue;
                 }
-                if (string.IsNullOrEmpty(where) || !where.StartsWith(plugins, StringComparison.OrdinalIgnoreCase)) continue;
+                if (string.IsNullOrEmpty(where)) continue;
+                string fileName = Path.GetFileName(where);
+                // The game's own code too: sosigs, guns, hands, physics objects.
+                bool game = fileName == "Assembly-CSharp.dll" || fileName == "Assembly-CSharp-firstpass.dll";
+                if (!game && !where.StartsWith(plugins, StringComparison.OrdinalIgnoreCase)) continue;
                 Type[] types;
                 try
                 {
@@ -171,7 +175,9 @@ namespace FastLoad
                 catch (Exception)
                 {
                 }
-                c.Mod = file.Length > 0 ? BundleLedger.ModOf(file) : method.DeclaringType.Assembly.GetName().Name;
+                string asm = Path.GetFileName(file);
+                c.Mod = asm == "Assembly-CSharp.dll" || asm == "Assembly-CSharp-firstpass.dll" ? "GAME"
+                    : file.Length > 0 ? BundleLedger.ModOf(file) : method.DeclaringType.Assembly.GetName().Name;
                 if (c.Mod.Length == 0 || c.Mod[0] == '(') c.Mod = method.DeclaringType.Assembly.GetName().Name;
                 h.Patch(method, pre, post);
                 s_costs[method] = c;

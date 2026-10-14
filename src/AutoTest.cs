@@ -255,11 +255,12 @@ namespace FastLoad
                 {
                     // The frame the patches went in is not a normal one.
                     LagProfiler.Begin();
+                    FramePhases.Begin();
                     m_sw.Start();
                     return false;
                 }
                 if (m_sw.Elapsed.TotalSeconds < m_seconds) return false;
-                Note = LagProfiler.End(m_label) + " | " + m_setup;
+                Note = FramePhases.End() + " || " + LagProfiler.End(m_label) + " | " + m_setup;
                 return true;
             }
         }
@@ -1009,6 +1010,15 @@ namespace FastLoad
         [MethodImpl(MethodImplOptions.NoInlining)]
         public static string Spawn(string text, Vector3 position, List<GameObject> made)
         {
+            // "sosig M_Swat_Heavy iff=1": a team number; sosigs of different teams fight each other.
+            int iff = 0;
+            int at = text.IndexOf(" iff=", StringComparison.Ordinal);
+            if (at > 0)
+            {
+                int.TryParse(text.Substring(at + 5).Trim(), out iff);
+                text = text.Substring(0, at).Trim();
+                position += new Vector3((iff % 2 == 0 ? -1f : 1f) * 4f, 0f, UnityEngine.Random.Range(-1.5f, 1.5f));
+            }
             SosigEnemyTemplate template = null;
             string picked = "";
             foreach (KeyValuePair<SosigEnemyID, SosigEnemyTemplate> pair in ManagerSingleton<IM>.Instance.odicSosigObjsByID)
@@ -1023,7 +1033,7 @@ namespace FastLoad
             if (template == null) return "NO SOSIG id contains '" + text + "'";
             Sodalite.Api.SosigAPI.SpawnOptions options = new Sodalite.Api.SosigAPI.SpawnOptions();
             options.SpawnActivated = true;
-            options.IFF = 0;
+            options.IFF = iff;
             options.SpawnWithFullAmmo = true;
             options.SosigTargetPosition = position;
             Sosig sosig = Sodalite.Api.SosigAPI.Spawn(template, options, position, Quaternion.identity);
