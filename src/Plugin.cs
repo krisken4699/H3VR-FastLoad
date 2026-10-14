@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using BepInEx;
 using BepInEx.Configuration;
 using FastLoad.Early;
@@ -329,6 +330,13 @@ namespace FastLoad
                 float hitch = Math.Max(1, hitchMs.Value);
                 ReportJob.HitchMs = hitch;
                 Sampler sampler = gameObject.AddComponent<Sampler>();
+                ConfigEntry<bool> sessionLog = Config.Bind("Debug", "SessionLog", true,
+                    "While you play (not in the menu), write what every slow frame was made of (physics, scripts, render, waiting) and which\n"
+                    + "methods of the game or of mods took longest in it, into BepInEx/FastLoad/run_*.log, plus a table per map (lag_*.txt).\n"
+                    + "Costs about 2 ms a frame for the first minutes in a map (less while a map is loading), a little after that.\n"
+                    + "Example: SessionLog = false");
+                bool scripted = File.Exists(Path.Combine(Path.Combine(Paths.BepInExRootPath, "FastLoad"), "autotest.txt"));
+                if (sessionLog.Value && !scripted) gameObject.AddComponent<SessionWatch>();
                 sampler.HitchMs = hitch;
 
                 SceneManager.sceneLoaded += OnSceneLoaded;

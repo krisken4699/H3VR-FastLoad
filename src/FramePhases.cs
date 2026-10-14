@@ -28,6 +28,40 @@ namespace FastLoad
         private static int s_frames;
         private static GameObject s_go;
 
+        /// <summary>Split of the frame that just ended ("phys 3.1 upd 12.0 ..."), its length, and its costliest timed methods.</summary>
+        public static string LastSplit = "";
+        public static double LastTotal;
+        public static string LastTop = "";
+        public static bool On
+        {
+            get { return s_on; }
+        }
+
+        private static readonly string[] Short = { "fixed", "phys", "upd", "anim", "late", "render", "wait" };
+        private static readonly double[] s_winMs = new double[7];
+        private static int s_winFrames;
+
+        /// <summary>Average split since the last call; starts a new window.</summary>
+        public static string Window()
+        {
+            int n = Mathf.Max(1, s_winFrames);
+            double sum = 0;
+            string text = "";
+            for (int i = 0; i < 7; i++)
+            {
+                sum += s_winMs[i];
+                text += (i == 0 ? "" : " ") + Short[i] + " " + (s_winMs[i] / n).ToString("0.0", CultureInfo.InvariantCulture);
+                s_winMs[i] = 0;
+            }
+            string line = s_winFrames + " frames, " + (sum / n).ToString("0.0", CultureInfo.InvariantCulture) + " ms avg = " + text;
+            s_winFrames = 0;
+            return line;
+        }
+
+        private static int s_gc;
+        /// <summary>Time SessionWatch spent putting timing patches in during this frame.</summary>
+        public static double PatchMs;
+
         private static long s_mark;
         private static int s_open = -1;
         private static int s_lastFrame = -1;
@@ -79,6 +113,29 @@ namespace FastLoad
                 {
                     // Close the old frame: what was open runs up to here.
                     Add(s_open, now);
+                    double total = 0;
+                    for (int i = 0; i < 7; i++) total += s_frame[i];
+                    LastTotal = total;
+                    if (total >= 25.0)
+                    {
+                        string split = "";
+                        for (int i = 0; i < 7; i++)
+                            if (s_frame[i] >= 0.5) split += (split.Length == 0 ? "" : " ") + Short[i] + " " + s_frame[i].ToString("0.0", CultureInfo.InvariantCulture);
+                        LastSplit = split;
+                    }
+                    else LastSplit = "";
+                    LastTop = LagProfiler.FrameTop(6, total >= 25.0);
+                    int gc = System.GC.CollectionCount(0);
+                    if (total >= 25.0)
+                    {
+                        if (gc != s_gc) LastTop += (LastTop.Length == 0 ? "" : ", ") + "GC ran (" + (gc - s_gc) + ")";
+                        if (PatchMs >= 1.0) LastTop += (LastTop.Length == 0 ? "" : ", ") + "FastLoad timing setup " + PatchMs.ToString("0.0", CultureInfo.InvariantCulture) + "ms";
+                    }
+                    s_gc = gc;
+                    PatchMs = 0;
+                    LagProfiler.FrameNo++;
+                    for (int i = 0; i < 7; i++) s_winMs[i] += s_frame[i];
+                    s_winFrames++;
                     for (int i = 0; i < 7; i++)
                     {
                         if (s_frame[i] > s_worst[i]) s_worst[i] = s_frame[i];

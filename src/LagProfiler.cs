@@ -35,6 +35,10 @@ namespace FastLoad
             public string Name;
             public string Mod;
             public string Kind;
+            public long FrameTicks;
+            public long WindowTicks;
+            public long WindowCalls;
+            public int FrameNo = -1;
         }
 
         private static readonly Dictionary<MethodBase, Cost> s_costs = new Dictionary<MethodBase, Cost>();
@@ -45,9 +49,81 @@ namespace FastLoad
         private static int s_frame0;
         private static readonly Stopwatch s_window = new Stopwatch();
 
+        private struct Todo
+        {
+            public MethodInfo Method;
+            public string Kind;
+        }
+
+        /// <summary>Methods found and not timed yet: game per-frame methods first, then mod components, then Harmony patch methods.</summary>
+        private static readonly List<Todo> s_pending = new List<Todo>();
+        private static readonly List<Todo> s_later = new List<Todo>();
+        private static Harmony s_h;
+        private static HarmonyMethod s_pre;
+        private static HarmonyMethod s_post;
+        public static int Timed
+        {
+            get { return s_patched; }
+        }
+
+        private static readonly Stopwatch s_windowWatch = Stopwatch.StartNew();
+
+        /// <summary>The costliest timed methods since the last call, in ms a second, then starts a new window.</summary>
+        public static string WindowTop(int count)
+        {
+            double seconds = Math.Max(0.001, s_windowWatch.Elapsed.TotalSeconds);
+            s_windowWatch.Reset();
+            s_windowWatch.Start();
+            List<Cost> all = new List<Cost>();
+            foreach (Cost c in s_costs.Values) if (c.WindowTicks > 0) all.Add(c);
+            all.Sort(delegate(Cost a, Cost b) { return b.WindowTicks.CompareTo(a.WindowTicks); });
+            double toMs = 1000.0 / Stopwatch.Frequency;
+            string text = "";
+            for (int i = 0; i < all.Count && i < count; i++)
+                text += (i == 0 ? "" : ", ") + all[i].Mod + " " + all[i].Name + " " + (all[i].WindowTicks * toMs / seconds).ToString("0.0", CultureInfo.InvariantCulture) + "ms/s ("
+                    + (all[i].WindowCalls / seconds).ToString("0", CultureInfo.InvariantCulture) + " calls/s)";
+            foreach (Cost c in all)
+            {
+                c.WindowTicks = 0;
+                c.WindowCalls = 0;
+            }
+            return text.Length == 0 ? "nothing timed yet" : text;
+        }
+
+        public static int Pending
+        {
+            get { return s_pending.Count; }
+        }
+
+        /// <summary>Finds and times everything at once (test step: a long frame).</summary>
         public static string Install()
         {
             if (s_installed) return "already in: " + s_patched + " methods";
+            string found = Find();
+            Stopwatch sw = Stopwatch.StartNew();
+            PatchSome(double.MaxValue);
+            return found + "; all timed in " + (int)sw.Elapsed.TotalMilliseconds + " ms";
+        }
+
+        /// <summary>Times pending methods for about that many milliseconds of this frame (spread over frames in normal play).</summary>
+        public static int PatchSome(double budgetMs)
+        {
+            Stopwatch sw = Stopwatch.StartNew();
+            int n = 0;
+            while (s_pending.Count > 0 && (n == 0 || sw.Elapsed.TotalMilliseconds < budgetMs))
+            {
+                Todo p = s_pending[s_pending.Count - 1];
+                s_pending.RemoveAt(s_pending.Count - 1);
+                Patch(s_h, p.Method, s_pre, s_post, p.Kind);
+                n++;
+            }
+            return n;
+        }
+
+        /// <summary>Lists what can be timed; nothing is patched yet.</summary>
+        public static string Find()
+        {
+            if (s_installed) return "already found";
             s_installed = true;
             Stopwatch sw = Stopwatch.StartNew();
             Harmony h = new Harmony("invent60.h3vr.fastload.lagprofiler");
@@ -77,7 +153,11 @@ namespace FastLoad
                 Collect(info.Postfixes, "postfix on " + on, patchMethods, seen, mine, early);
                 Collect(info.Finalizers, "finalizer on " + on, patchMethods, seen, mine, early);
             }
-            for (int i = 0; i < patchMethods.Count; i++) Patch(h, patchMethods[i].Key, pre, post, patchMethods[i].Value);
+            s_h = h;
+            s_pre = pre;
+            s_post = post;
+            List<Todo> gameFrames = new List<Todo>();
+            List<Todo> modFrames = new List<Todo>();
 
             // 2. Per-frame methods of mod components.
             foreach (Assembly a in AppDomain.CurrentDomain.GetAssemblies())
@@ -136,11 +216,24 @@ namespace FastLoad
                         }
                         if (ReferenceEquals(method, null) || method.IsAbstract || method.IsGenericMethodDefinition || seen.ContainsKey(method)) continue;
                         seen[method] = true;
-                        Patch(h, method, pre, post, FrameMethods[m]);
+                        Todo one = new Todo();
+                        one.Method = method;
+                        one.Kind = FrameMethods[m];
+                        (IsGame(where) ? gameFrames : modFrames).Add(one);
                     }
                 }
             }
-            return "timing " + s_patched + " mod methods (" + patchMethods.Count + " Harmony patch methods), " + s_failed + " could not be timed, set up in "
+            // Patched from the end of the list: what is added last goes in first.
+            for (int i = 0; i < patchMethods.Count; i++)
+            {
+                Todo one = new Todo();
+                one.Method = patchMethods[i].Key;
+                one.Kind = patchMethods[i].Value;
+                s_pending.Add(one);
+            }
+            s_pending.AddRange(modFrames);
+            s_pending.AddRange(gameFrames);
+            return "found " + s_pending.Count + " methods to time (" + gameFrames.Count + " game, " + modFrames.Count + " mod per-frame, " + patchMethods.Count + " Harmony patch methods) in "
                 + (int)sw.Elapsed.TotalMilliseconds + " ms";
         }
 
@@ -194,6 +287,35 @@ namespace FastLoad
             __state = s_measuring ? Stopwatch.GetTimestamp() : 0;
         }
 
+        private static bool IsGame(string file)
+        {
+            string name = Path.GetFileName(file);
+            return name == "Assembly-CSharp.dll" || name == "Assembly-CSharp-firstpass.dll";
+        }
+
+        /// <summary>Frame number set by FramePhases; methods timed in the current frame are listed in s_touched.</summary>
+        public static int FrameNo;
+        private static readonly List<Cost> s_touched = new List<Cost>();
+
+        /// <summary>The costliest timed methods of the frame that just ended, then forgets that frame.</summary>
+        public static string FrameTop(int count, bool report)
+        {
+            string text = "";
+            if (report && s_touched.Count > 0)
+            {
+                s_touched.Sort(delegate(Cost a, Cost b) { return b.FrameTicks.CompareTo(a.FrameTicks); });
+                double toMs = 1000.0 / Stopwatch.Frequency;
+                for (int i = 0; i < s_touched.Count && i < count; i++)
+                {
+                    if (s_touched[i].FrameTicks * toMs < 0.5) break;
+                    text += (text.Length == 0 ? "" : ", ") + s_touched[i].Mod + " " + s_touched[i].Name + " " + (s_touched[i].FrameTicks * toMs).ToString("0.0", CultureInfo.InvariantCulture) + "ms";
+                }
+            }
+            for (int i = 0; i < s_touched.Count; i++) s_touched[i].FrameTicks = 0;
+            s_touched.Clear();
+            return text;
+        }
+
         private static void Post(long __state, MethodBase __originalMethod)
         {
             if (__state == 0 || !s_measuring) return;
@@ -202,6 +324,15 @@ namespace FastLoad
             if (!s_costs.TryGetValue(__originalMethod, out c)) return;
             c.Ticks += took;
             c.Calls++;
+            if (c.FrameNo != FrameNo)
+            {
+                c.FrameNo = FrameNo;
+                c.FrameTicks = 0;
+                s_touched.Add(c);
+            }
+            c.FrameTicks += took;
+            c.WindowTicks += took;
+            c.WindowCalls++;
         }
 
         public static void Begin()

@@ -69,7 +69,8 @@ namespace FastLoad
                 if (slow)
                 {
                     Timeline.Write("HIT", "frame=" + LineFormat.N0(ms) + "ms loading=" + BundleLedger.InFlight
-                        + " [" + BundleLedger.InFlightNames(4) + "] logs=[" + FrameSources.TakeAndReset() + "]");
+                        + " [" + BundleLedger.InFlightNames(4) + "] logs=[" + FrameSources.TakeAndReset() + "]"
+                        + (FramePhases.On && FramePhases.LastSplit.Length > 0 ? " split=[" + FramePhases.LastSplit + "] top=[" + FramePhases.LastTop + "]" : ""));
                 }
                 else
                 {
