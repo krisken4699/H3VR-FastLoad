@@ -136,6 +136,7 @@ namespace FastLoad
         private static void PartsTick()
         {
             MwoParts.Tick();
+            AdminAsk.Tick();
         }
 
         private static Transform Head()

@@ -9,7 +9,7 @@
     <Optimize>true</Optimize>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <!-- SDK projects glob **/*.cs: keep the patcher and the tests out of the plugin. -->
-    <DefaultItemExcludes>$(DefaultItemExcludes);patcher\**;tests\**;docs\**;tools\**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);patcher\**;tests\**;docs\**;tools\**;helper\**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

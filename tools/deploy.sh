@@ -6,7 +6,7 @@ set -o pipefail
 cd "$(dirname "$0")/.."
 PROFILE="/c/Users/Hp/AppData/Roaming/com.kesomannen.gale/h3vr/profiles/new2/BepInEx"
 
-B=$(dotnet build -c Release patcher/FastLoadPatcher.csproj 2>&1; dotnet build -c Release FastLoad.csproj 2>&1) || true
+B=$(dotnet build -c Release patcher/FastLoadPatcher.csproj 2>&1; dotnet build -c Release FastLoad.csproj 2>&1; dotnet build -c Release helper/FastLoadHelper.csproj 2>&1) || true
 echo "$B" | grep -E " error |Build succeeded" | sort -u
 # Never deploy an old DLL over a failed build.
 echo "$B" | grep -q "Build succeeded" || { echo "BUILD FAILED: nothing deployed"; exit 1; }
@@ -38,4 +38,5 @@ done
 mkdir -p "$PD" "$TD"
 cp patcher/bin/Release/FastLoadPatcher.dll "$TD/"
 cp bin/Release/FastLoad.dll "$PD/"
+cp helper/bin/Release/FastLoadHelper.exe "$PD/"
 echo "deployed to new2"

@@ -101,6 +101,18 @@ namespace FastLoad
                 + "Example: Packs = false");
             if (lightPacks.Value) LightPacks.Install(Logger);
 
+            ConfigEntry<int> pageFileGB = Config.Bind("Admin", "PageFileGB", 64,
+                "Size in GB of a fixed page file on C:. Windows normally grows its page file while a game asks for more memory; on the\n"
+                + "profile this was built on that is when the game froze for 2-8 seconds (spawning modular guns, opening the workshop).\n"
+                + "A fixed size is full size before the game starts. Setting it needs administrator rights: FastLoad starts its own small\n"
+                + "FastLoadHelper.exe and Windows asks you once, on the desktop (take the headset off). The game itself never runs as\n"
+                + "administrator. Works after the next Windows restart. Asked once; to be asked again delete BepInEx/cache/FastLoad.admin.txt.\n"
+                + "At least 15 GB must stay free on C: or nothing is changed. To undo: run FastLoadHelper.exe undo <file> as administrator,\n"
+                + "or tick 'Automatically manage paging file size' in Windows (System > Advanced > Performance > Virtual memory).\n"
+                + "0 = never ask.\n"
+                + "Example: PageFileGB = 64     Example: PageFileGB = 0");
+            AdminAsk.Install(Logger, pageFileGB.Value);
+
             ConfigEntry<bool> voices = Config.Bind("OnDemand", "SosigVoices", true,
                 "Custom Sosig Loader reads every installed sosig voice pack the moment item loading finishes: the game stood still for 7 s and\n"
                 + "then ran at 5-24 fps for half a minute on the profile this was built on (851 .wav and 10,927 .ogg files). With this on, a voice\n"
