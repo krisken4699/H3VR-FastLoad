@@ -1,0 +1,11 @@
+wait items
+wait 12
+spawn ModularWeaponTesterAR
+wait 3
+spawn ModulAeroM4E1
+wait 12
+check
+look
+clear
+wait 3
+quit

@@ -86,13 +86,20 @@ namespace FastLoad
             ConfigEntry<bool> modularParts = Config.Bind("OnDemand", "ModularParts", true,
                 "Modular guns: load only the part packs that hold the parts on the gun (plus the other files of those same mods), instead of\n"
                 + "every pack that has any part for any of the gun's part points. On the profile this was built on, one AR needed 48 packs and\n"
-                + "about a minute before it appeared. The other packs of a part group load when a workshop panel for that group appears, and the\n"
-                + "panel shows them as soon as they are in.\n"
+                + "about a minute before it appeared. A workshop panel lists the parts of packs that are not loaded from what FastLoad kept\n"
+                + "about them (name and a small picture); a pack loads, in the background, when one of its parts is picked.\n"
                 + "Which pack holds which part is learned as packs load and remembered between game starts, so the first modular gun after\n"
                 + "installing FastLoad (or a new part mod) still loads everything once.\n"
                 + "Side effect: a gun that picks random parts picks among the packs loaded so far.\n"
                 + "Example: ModularParts = false");
             MwoBridge.PartLevel = modularParts.Value;
+
+            ConfigEntry<bool> lightPacks = Config.Bind("Light", "Packs", true,
+                "Experimental. When BepInEx/cache/FastLoad.light holds a light copy of a mod file (the same file with every texture's three\n"
+                + "biggest sizes left out, about a sixth of the memory), the game reads the light copy instead. Guns look less sharp up close.\n"
+                + "Nothing happens while that folder is empty.\n"
+                + "Example: Packs = false");
+            if (lightPacks.Value) LightPacks.Install(Logger);
 
             ConfigEntry<bool> voices = Config.Bind("OnDemand", "SosigVoices", true,
                 "Custom Sosig Loader reads every installed sosig voice pack the moment item loading finishes: the game stood still for 7 s and\n"

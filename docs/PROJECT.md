@@ -416,3 +416,25 @@ textures; (3) do that work ourselves off the main thread, in our own helper proc
 - `check` before and after the picks differs (transforms 188 -> 861, missing materials 3 -> 11): the 19 panels are
   parented to the gun; NOT yet compared with the same picks without stand-ins.
 - Spawning ModulAeroM4E1 is unchanged: 13.9-18 s, +7.9 GB, frames up to 2.5 s. Next.
+
+### 2026-10-14 21:15: light packs, first game run (test 22)
+
+Light copy = same file, every DXT1/DXT5/RGB(A) texture without its 3 biggest mips (no re-encoding; the smaller mips
+are already in the file). Written outside the game by `tools/light/lightpack.py` (UnityPy 1.25.2) into
+`BepInEx/cache/FastLoad.light`; `src/LightPacks.cs` hands the game the copy at `AssetBundle.LoadFromFile(Async)`.
+The 8 packs of a ModulAeroM4E1 spawn: 3.27 GB -> 558 MB on disk, 4.7 -> 0.9 GB of pixels. Crunched textures and
+textures without mips are left as they are (handguards: 450 of 739).
+
+| spawn ModulAeroM4E1, platform beside it | originals | light copies |
+|---|---|---|
+| time to appear | 11.4 s | 8.8 s |
+| commit | +7.75 GB | +3.49 GB |
+| longest frame in the spawn | 1122-1297 ms | 530 ms |
+| `check` (transforms/components/renderers/missing mat/mesh) | 188/479/54/3/2 | 188/479/54/3/2 |
+| `look` brightness / near-black | 40-41 / 0-1% | 39 / 1% |
+
+NOT yet: the copies are made by hand for these 8 packs only; full pictures never come back (see next step); nobody
+has looked at it in the headset.
+Next: full-size textures for what is in front of the player, made off the main thread and swapped in with
+`Texture2D.UpdateExternalTexture` (unproven on Unity 5.6); learn which definition holds a part so a spawn reads one
+definition, not a whole pack.
