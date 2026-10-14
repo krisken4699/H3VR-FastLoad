@@ -246,6 +246,12 @@ namespace FastLoad
         // ---- pick: a stand-in pressed on a workshop panel, until the real part is on the gun
 
         [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+        public static string VaultPart(string rest, List<GameObject> made)
+        {
+            return MwoStubs.TestConfigure(rest, made);
+        }
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
         public static string StandIns()
         {
             return MwoStubs.Report();

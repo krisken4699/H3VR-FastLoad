@@ -70,6 +70,13 @@ namespace FastLoad
             h.Patch(typeof(ModularWorkshopUI).GetMethod("PButton_Select", Any), new HarmonyMethod(typeof(MwoStubs).GetMethod("SelectPre", Any)));
         }
 
+        /// <summary>Bundle a stand-in stands for; null when that part is not a stand-in.</summary>
+        public static string PathOf(string group, string part)
+        {
+            Stub s;
+            return s_stubs.TryGetValue(PartIndex.PartKey(group, part), out s) ? s.Path : null;
+        }
+
         public static bool IsStub(string group, string part)
         {
             return s_stubs.ContainsKey(PartIndex.PartKey(group, part));
@@ -457,6 +464,54 @@ namespace FastLoad
                 written++;
             }
             return text + "; " + written + " picture sheets written as PNG";
+        }
+
+        /// <summary>
+        /// "barrel|handguard|stock|&lt;group&gt; text": calls the configure method directly the way a vault file does, with
+        /// the first stand-in whose name contains the text, on the first spawned modular gun; says what is on the gun after.
+        /// </summary>
+        public static string TestConfigure(string rest, List<GameObject> made)
+        {
+            int space = rest.IndexOf(' ');
+            string kind = space < 0 ? rest : rest.Substring(0, space);
+            string text = space < 0 ? "*" : rest.Substring(space + 1).Trim();
+            IModularWeapon gun = null;
+            for (int i = 0; i < made.Count && gun == null; i++) if (made[i] != null) gun = made[i].GetComponentInChildren(typeof(IModularWeapon)) as IModularWeapon;
+            if (gun == null) return "NO spawned modular gun";
+            ModularFVRFireArm arm = gun.GetModularFVRFireArm;
+            ModularWeaponPartsAttachmentPoint point = kind == "barrel" ? arm.ModularBarrelAttachmentPoint : kind == "handguard" ? arm.ModularHandguardAttachmentPoint
+                : kind == "stock" ? arm.ModularStockAttachmentPoint : null;
+            if (point == null) arm.AllAttachmentPoints.TryGetValue(kind, out point);
+            if (point == null || string.IsNullOrEmpty(point.ModularPartsGroupID)) return "NO point '" + kind + "' on the gun";
+            string group = point.ModularPartsGroupID;
+            string pick = null;
+            foreach (string key in s_stubs.Keys)
+            {
+                int bar = key.IndexOf('|');
+                if (key.Substring(0, bar) != group) continue;
+                string name = key.Substring(bar + 1);
+                if (text != "*" && name.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                pick = name;
+                break;
+            }
+            bool fromIndex = false;
+            if (pick == null)
+            {
+                // No stand-ins yet (no panel opened): a part known to be in a bundle that is not loaded.
+                pick = MwoParts.UnloadedPart(group, text);
+                fromIndex = pick != null;
+            }
+            if (pick == null) return "NO unloaded part matching '" + text + "' in group " + group;
+            string was = point.SelectedModularWeaponPart;
+            if (kind == "barrel") gun.ConfigureModularBarrel(pick, false);
+            else if (kind == "handguard") gun.ConfigureModularHandguard(pick, false);
+            else if (kind == "stock") gun.ConfigureModularStock(pick, false);
+            else gun.ConfigureModularWeaponPart(point, pick, false);
+            ModularWeaponPart on = point.ModularPartPoint != null ? point.ModularPartPoint.GetComponent<ModularWeaponPart>() : null;
+            bool stand = on != null && on.name.IndexOf("FastLoad stand-in", StringComparison.Ordinal) >= 0;
+            return kind + " '" + pick + "' (" + (fromIndex ? "not loaded" : "stand-in") + ", was '" + was + "'): point now says '" + point.SelectedModularWeaponPart + "', object "
+                + (on == null ? "NONE" : "'" + on.name + "'") + (stand ? " = A STAND-IN (wrong)" : "") + ", " + (on != null && on.MeshRenderers != null ? on.MeshRenderers.Length : -1)
+                + " mesh renderers, still a stand-in in the list: " + IsStub(group, pick);
         }
 
         private static ModularWorkshopUI s_testPanel;

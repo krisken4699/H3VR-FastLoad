@@ -202,6 +202,7 @@ namespace FastLoad
                     else if (verb == "profile") m_step = new ProfileStep(rest);
                     else if (verb == "bundleprobe" || verb == "bench" || verb == "pick") m_step = new LabStep(verb, rest, m_made);
                     else if (verb == "standins") m_note = LoadLab.StandIns();
+                    else if (verb == "vaultpart") m_note = LoadLab.VaultPart(rest, m_made);
                     else if (verb == "icons") m_note = rest == "drop" ? Icons.UnloadAll() : rest == "check" ? Icons.Check() : "icons drop | icons check";
                     else if (verb == "quit")
                     {

@@ -1,0 +1,22 @@
+wait items
+wait 12
+spawn ModulAeroM4E1
+wait 10
+vaultpart barrel *              # A: no panel opened yet; part in a bundle that is not loaded (vault file case)
+vaultpart handguard *
+vaultpart Grips_AR *
+clear
+wait 3
+spawn ModularWeaponTesterAR
+wait 3
+spawn ModulAeroM4E1
+wait 10
+bench 15                        # panels open: unloaded parts become stand-ins
+vaultpart barrel *              # B: the part is a stand-in now
+vaultpart stock *
+vaultpart Uppers_AR *
+wait 3
+check
+clear
+wait 3
+quit

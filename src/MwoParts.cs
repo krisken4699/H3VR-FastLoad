@@ -108,6 +108,7 @@ namespace FastLoad
                 h.Patch(typeof(ModularWorkshopUI).GetMethod("InitializeArrays", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
                 h.Patch(typeof(ModularWorkshopUI).GetMethod("PButton_ShowUI", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
                 MwoStubs.Install(h);
+                MwoEnsure.Install(h, syncOne, loader.GetField("LoadingStartedBundlePaths", Any), s_groupToBundles);
                 Mode = "on, " + s_index.Count + " bundles known from earlier runs";
             }
             catch (Exception e)
@@ -178,6 +179,7 @@ namespace FastLoad
         public static void Tick()
         {
             MwoStubs.Prepare(s_index);
+            MwoEnsure.Tick();
             if (MwoStubs.Tick())
             {
                 s_indexDirty = true;
@@ -390,6 +392,23 @@ namespace FastLoad
             {
                 if (s_log != null) s_log.LogWarning("Modular parts: stand-ins not replaced: " + e.GetType().Name + ": " + e.Message);
             }
+        }
+
+        /// <summary>Test helper: a part of that group, name containing the text ("*" any), whose bundle is known and not loaded.</summary>
+        public static string UnloadedPart(string group, string text)
+        {
+            foreach (KeyValuePair<string, PartIndex.Entry> pair in s_index.Entries)
+            {
+                if (Registered(pair.Key) || !ReferenceEquals(Look(pair.Key), pair.Value)) continue;
+                for (int i = 0; i < pair.Value.List.Count; i++)
+                {
+                    PartIndex.Part p = pair.Value.List[i];
+                    if (p.Group != group || (text != "*" && p.Name.IndexOf(text, StringComparison.OrdinalIgnoreCase) < 0)) continue;
+                    if (IsThere(group, p.Name)) continue;
+                    return p.Name;
+                }
+            }
+            return null;
         }
 
         public static bool IsRegistered(string path)
