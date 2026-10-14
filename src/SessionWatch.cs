@@ -29,6 +29,24 @@ namespace FastLoad
         private string m_scene = "";
         private float m_nextPrf;
         private int m_patchedLast = -1;
+        private float m_promoteAt = -1f;
+        private bool m_promoteAgain;
+
+        /// <summary>Times the per-frame methods of every component type that has a live object right now.</summary>
+        private void PromoteLive()
+        {
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            System.Collections.Generic.Dictionary<Type, bool> live = new System.Collections.Generic.Dictionary<Type, bool>();
+            MonoBehaviour[] all = FindObjectsOfType<MonoBehaviour>();
+            for (int i = 0; i < all.Length; i++) if (all[i] != null) live[all[i].GetType()] = true;
+            int moved = LagProfiler.Promote(live);
+            Timeline.Write("PRF", all.Length + " components of " + live.Count + " types in use; " + moved + " more methods to time (" + (int)sw.Elapsed.TotalMilliseconds + " ms to look)");
+            if (m_promoteAgain)
+            {
+                m_promoteAgain = false;
+                m_promoteAt = Time.realtimeSinceStartup + 45f;
+            }
+        }
 
         public static string Mode = "off";
 
@@ -73,8 +91,15 @@ namespace FastLoad
                 {
                     m_announced = true;
                     Timeline.Write("PRF", m_found);
+                    m_promoteAt = 0f;
+                    m_promoteAgain = true;
                 }
-                if (LagProfiler.Pending > 0)
+                if (m_promoteAt >= 0f && Time.realtimeSinceStartup >= m_promoteAt)
+                {
+                    m_promoteAt = -1f;
+                    PromoteLive();
+                }
+                if (LagProfiler.Ready > 0)
                 {
                     bool loading = false;
                     try
@@ -85,9 +110,9 @@ namespace FastLoad
                     {
                     }
                     System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
-                    LagProfiler.PatchSome(loading ? 40.0 : 2.0);
+                    LagProfiler.PatchSome(loading ? 40.0 : 1.0);
                     FramePhases.PatchMs += sw.Elapsed.TotalMilliseconds;
-                    if (LagProfiler.Pending == 0) Timeline.Write("PRF", "every listed method is timed now");
+                    if (LagProfiler.Ready == 0) Timeline.Write("PRF", "methods of everything in use are timed now (" + LagProfiler.Timed + ")");
                 }
             }
 
@@ -96,6 +121,9 @@ namespace FastLoad
                 Table(m_scene);
                 Timeline.Write("PRF", "scene " + m_scene + " -> " + scene);
                 m_scene = scene;
+                // What the new map uses, now and again once its sosigs and items have come in.
+                m_promoteAt = Time.realtimeSinceStartup + 2f;
+                m_promoteAgain = true;
             }
 
             if (Time.realtimeSinceStartup >= m_nextPrf)
@@ -110,7 +138,7 @@ namespace FastLoad
                 {
                 }
                 int timed = LagProfiler.Timed;
-                string progress = LagProfiler.Pending > 0 ? " (" + LagProfiler.Pending + " still to time)" : "";
+                string progress = LagProfiler.Ready > 0 ? " (" + LagProfiler.Ready + " still to time)" : "";
                 Timeline.Write("PRF", "last 30 s in " + scene + ", sosigs " + sosigs + ", methods timed " + timed + progress + ": " + FramePhases.Window()
                     + " | costliest: " + LagProfiler.WindowTop(8));
                 m_patchedLast = timed;

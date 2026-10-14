@@ -57,7 +57,30 @@ namespace FastLoad
 
         /// <summary>Methods found and not timed yet: game per-frame methods first, then mod components, then Harmony patch methods.</summary>
         private static readonly List<Todo> s_pending = new List<Todo>();
-        private static readonly List<Todo> s_later = new List<Todo>();
+        /// <summary>Found methods whose type is in use now: these get timed.</summary>
+        private static readonly List<Todo> s_ready = new List<Todo>();
+        public static int Ready
+        {
+            get { return s_ready.Count; }
+        }
+
+        /// <summary>
+        /// Moves the found methods of types that have a live object (or every method, with null) to the list that gets
+        /// timed. Types nothing uses cost nothing. Returns how many moved.
+        /// </summary>
+        public static int Promote(Dictionary<Type, bool> live)
+        {
+            int moved = 0;
+            for (int i = s_pending.Count - 1; i >= 0; i--)
+            {
+                Todo t = s_pending[i];
+                if (live != null && (ReferenceEquals(t.Method.DeclaringType, null) || !live.ContainsKey(t.Method.DeclaringType))) continue;
+                s_ready.Add(t);
+                s_pending.RemoveAt(i);
+                moved++;
+            }
+            return moved;
+        }
         private static Harmony s_h;
         private static HarmonyMethod s_pre;
         private static HarmonyMethod s_post;
@@ -101,6 +124,7 @@ namespace FastLoad
             if (s_installed) return "already in: " + s_patched + " methods";
             string found = Find();
             Stopwatch sw = Stopwatch.StartNew();
+            Promote(null);
             PatchSome(double.MaxValue);
             return found + "; all timed in " + (int)sw.Elapsed.TotalMilliseconds + " ms";
         }
@@ -110,10 +134,10 @@ namespace FastLoad
         {
             Stopwatch sw = Stopwatch.StartNew();
             int n = 0;
-            while (s_pending.Count > 0 && (n == 0 || sw.Elapsed.TotalMilliseconds < budgetMs))
+            while (s_ready.Count > 0 && (n == 0 || sw.Elapsed.TotalMilliseconds < budgetMs))
             {
-                Todo p = s_pending[s_pending.Count - 1];
-                s_pending.RemoveAt(s_pending.Count - 1);
+                Todo p = s_ready[s_ready.Count - 1];
+                s_ready.RemoveAt(s_ready.Count - 1);
                 Patch(s_h, p.Method, s_pre, s_post, p.Kind);
                 n++;
             }
