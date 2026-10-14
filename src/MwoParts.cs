@@ -108,7 +108,7 @@ namespace FastLoad
                 h.Patch(typeof(ModularWorkshopUI).GetMethod("InitializeArrays", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
                 h.Patch(typeof(ModularWorkshopUI).GetMethod("PButton_ShowUI", Any), new HarmonyMethod(me.GetMethod("PanelPre", Any)));
                 MwoStubs.Install(h);
-                MwoEnsure.Install(h, syncOne, loader.GetField("LoadingStartedBundlePaths", Any), s_groupToBundles);
+                MwoEnsure.Install(h, syncOne, loader.GetField("LoadingStartedBundlePaths", Any), s_groupToBundles, repo.GetField("SkinPathToBundlesDic", Any));
                 Mode = "on, " + s_index.Count + " bundles known from earlier runs";
             }
             catch (Exception e)

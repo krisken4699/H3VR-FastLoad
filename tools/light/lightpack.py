@@ -58,6 +58,17 @@ for obj in env.objects:
 os.makedirs(os.path.dirname(dst), exist_ok=True)
 with open(dst, "wb") as f:
     f.write(env.file.save(packer="lz4"))
+# Which original this copy stands for, so the game uses it only for that unchanged file.
+st = os.stat(src)
+ticks = int((st.st_mtime_ns // 100) + 621355968000000000)
+listing = os.path.join(os.path.dirname(dst), "light.txt")
+lines = []
+if os.path.exists(listing):
+    lines = [l for l in open(listing, encoding="utf-8").read().splitlines() if l and l.split("	")[0] != os.path.basename(dst)]
+lines.append("	".join([os.path.basename(dst), os.path.abspath(src), str(st.st_size), str(ticks)]))
+open(listing, "w", encoding="utf-8").write("
+".join(lines) + "
+")
 print("cut", cut, "left as they are", kept, "not touched (crunched / other)", skipped)
 print("pixel data MB", round(before / 1048576), "->", round(after / 1048576))
 print("file MB", round(os.path.getsize(src) / 1048576), "->", round(os.path.getsize(dst) / 1048576), "in", round(time.time() - t0, 1), "s")

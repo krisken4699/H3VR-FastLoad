@@ -33,6 +33,8 @@ namespace FastLoad
         /// <summary>A hand this far from its controller pose is not following (metres). Following measures 0.</summary>
         private const float StuckGap = 0.05f;
         private const double StuckSeconds = 0.75;
+        private readonly Vector3[] m_lastHand = new Vector3[2];
+        private readonly Vector3[] m_lastPose = new Vector3[2];
 
         private readonly Stopwatch m_since = Stopwatch.StartNew();
         private readonly Stopwatch m_setOff = new Stopwatch();
@@ -173,9 +175,21 @@ namespace FastLoad
                         continue;
                     }
                     if (!h.Pose[h.HandSource].poseIsValid) continue;
-                    float gap = (h.transform.localPosition - h.Pose[h.HandSource].localPosition).magnitude;
+                    Vector3 handAt = h.transform.localPosition;
+                    Vector3 poseAt = h.Pose[h.HandSource].localPosition;
+                    float gap = (handAt - poseAt).magnitude;
                     gaps += (gaps.Length == 0 ? "" : "/") + (int)(gap * 1000f) + "mm";
-                    if (gap > StuckGap) anyStuck = true;
+                    // Stuck = the controller moves and the hand does not move at all. A hand some distance from the raw
+                    // pose is not enough: smoothing mods (HandStabilizer patches the pose update with a Lerp) keep it
+                    // behind the controller on purpose, and it still moves.
+                    if (i < 2)
+                    {
+                        float handMoved = (handAt - m_lastHand[i]).magnitude;
+                        float poseMoved = (poseAt - m_lastPose[i]).magnitude;
+                        m_lastHand[i] = handAt;
+                        m_lastPose[i] = poseAt;
+                        if (gap > StuckGap && poseMoved > 0.03f && handMoved < 0.002f) anyStuck = true;
+                    }
                 }
                 int culls = m_stereoCulls;
                 m_stereoCulls = 0;

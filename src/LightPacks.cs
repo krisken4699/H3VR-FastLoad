@@ -29,11 +29,29 @@ namespace FastLoad
             try
             {
                 s_dir = Path.Combine(Paths.CachePath, "FastLoad.light");
-                if (Directory.Exists(s_dir))
+                // light.txt: "light file name <tab> original full path <tab> original size <tab> original write time ticks".
+                // A copy is used only for that exact original, unchanged since: several mods ship files of the same
+                // name (mw_bruen_p890 on new2), and a mod update makes an old copy wrong.
+                string list = Path.Combine(s_dir, "light.txt");
+                int stale = 0;
+                if (File.Exists(list))
                 {
-                    string[] files = Directory.GetFiles(s_dir);
-                    for (int i = 0; i < files.Length; i++) s_light[Path.GetFileName(files[i])] = files[i];
+                    foreach (string line in File.ReadAllLines(list))
+                    {
+                        string[] f = line.Split('\t');
+                        long size, ticks;
+                        if (f.Length != 4 || !long.TryParse(f[2], out size) || !long.TryParse(f[3], out ticks)) continue;
+                        string light = Path.Combine(s_dir, f[0]);
+                        FileInfo original = new FileInfo(f[1]);
+                        if (!File.Exists(light) || !original.Exists || original.Length != size || original.LastWriteTimeUtc.Ticks != ticks)
+                        {
+                            stale++;
+                            continue;
+                        }
+                        s_light[Path.GetFullPath(f[1])] = light;
+                    }
                 }
+                if (stale > 0) log.LogInfo("Light packs: " + stale + " light copies not used (original changed or gone)");
                 if (s_light.Count == 0)
                 {
                     Mode = "on, no light copies in " + s_dir;
@@ -66,7 +84,7 @@ namespace FastLoad
             {
                 if (path == null) return;
                 string light;
-                if (!s_light.TryGetValue(Path.GetFileName(path), out light)) return;
+                if (!s_light.TryGetValue(Path.GetFullPath(path), out light)) return;
                 if (string.Equals(Path.GetFullPath(path), Path.GetFullPath(light), StringComparison.OrdinalIgnoreCase)) return;
                 Timeline.Write("DEF", "light pack: " + Path.GetFileName(path) + " read from the light copy");
                 path = light;

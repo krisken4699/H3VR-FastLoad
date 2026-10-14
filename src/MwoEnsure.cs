@@ -43,7 +43,9 @@ namespace FastLoad
         public static int Loaded;
         public static int Deferred;
 
-        public static void Install(Harmony h, MethodInfo syncOne, FieldInfo started, FieldInfo groupToBundles)
+        private static IDictionary s_skinToBundles;
+
+        public static void Install(Harmony h, MethodInfo syncOne, FieldInfo started, FieldInfo groupToBundles, FieldInfo skinToBundles)
         {
             // Test-only: a file named nogate.txt next to the run logs leaves the gate out, to see the game without it.
             if (System.IO.File.Exists(System.IO.Path.Combine(System.IO.Path.Combine(BepInEx.Paths.BepInExRootPath, "FastLoad"), "nogate.txt")))
@@ -54,6 +56,7 @@ namespace FastLoad
             s_syncOne = syncOne;
             s_started = ReferenceEquals(started, null) ? null : started.GetValue(null) as HashSet<string>;
             s_groupToBundles = ReferenceEquals(groupToBundles, null) ? null : groupToBundles.GetValue(null) as IDictionary;
+            s_skinToBundles = ReferenceEquals(skinToBundles, null) ? null : skinToBundles.GetValue(null) as IDictionary;
             HarmonyMethod general = new HarmonyMethod(typeof(MwoEnsure).GetMethod("GeneralPre", Any));
             general.priority = Priority.First;
             h.Patch(typeof(ModularFVRFireArm).GetMethod("ConfigureModularWeaponPart", Any), general);
@@ -111,7 +114,10 @@ namespace FastLoad
         {
             try
             {
-                if (string.IsNullOrEmpty(group) || string.IsNullOrEmpty(part) || IsReal(group, part)) return true;
+                if (string.IsNullOrEmpty(group) || string.IsNullOrEmpty(part)) return true;
+                // Its skins can be in bundles of their own (skin packs): the part goes on with its skin list complete.
+                LoadSkins(group, part);
+                if (IsReal(group, part)) return true;
                 List<string> paths = BundlesFor(group, part);
                 List<string> waiting = new List<string>();
                 for (int i = 0; i < paths.Count; i++)
@@ -147,6 +153,22 @@ namespace FastLoad
             {
                 Timeline.Write("DEF", "modular parts: gate failed for '" + part + "' (" + group + "): " + e.GetType().Name + ": " + e.Message + "; left to the workshop");
                 return !MwoStubs.IsStub(group, part);
+            }
+        }
+
+        /// <summary>Loads (synchronously) the known bundles that hold skins for that part and are not loaded or on their way.</summary>
+        private static void LoadSkins(string group, string part)
+        {
+            // The optimizer's own table of which bundles hold skins for a part (skin-only packs included).
+            string skin = group + "/" + part;
+            List<string> all = s_skinToBundles != null && s_skinToBundles.Contains(skin) ? s_skinToBundles[skin] as List<string> : null;
+            if (all == null) return;
+            for (int i = 0; i < all.Count; i++)
+            {
+                string path = all[i];
+                if (MwoParts.IsRegistered(path) || (s_started != null && s_started.Contains(path))) continue;
+                s_syncOne.Invoke(null, new object[] { path });
+                Loaded++;
             }
         }
 

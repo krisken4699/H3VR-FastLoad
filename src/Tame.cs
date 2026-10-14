@@ -134,6 +134,11 @@ namespace FastLoad
                     // Once more, in case its Awake did not bind them.
                     g.Runs = 1;
                     if (!Close(m, g)) continue;
+                    // A setting changed in the game (config manager, file reload): let it bind once more, as it would
+                    // have on its next tick, so changes still take effect at once.
+                    Gate reopen = g;
+                    instance.Config.SettingChanged += delegate { reopen.Runs = Math.Max(reopen.Runs, 1); };
+                    instance.Config.ConfigReloaded += delegate { reopen.Runs = Math.Max(reopen.Runs, 1); };
                     string text = pair.Value.Metadata.Name + " (" + type.FullName + "." + m.Name + ") bound its " + binds + " settings again every tick; now it runs once";
                     Timeline.Write("DEF", "tame: " + text);
                     Log.LogInfo("Tame: " + text);

@@ -438,3 +438,28 @@ has looked at it in the headset.
 Next: full-size textures for what is in front of the player, made off the main thread and swapped in with
 `Texture2D.UpdateExternalTexture` (unproven on Unity 5.6); learn which definition holds a part so a spawn reads one
 definition, not a whole pack.
+
+## 2026-10-15 audit: every FastLoad change checked against the code that reads what it changes
+
+invent60: "look at what u did ... you have the entire game binary and decompiled stuff". Method: list every patch and
+every piece of shared state FastLoad changes; find every reader in the decompiled game, ModularWorkshop,
+ModulWorkshop_Optimizer and all installed mods (string scan of all DLLs, then decompile the hits); test each risky
+path with a red run (without the fix) and a green run.
+
+| Feature | What it changes | Readers checked | Result |
+|---|---|---|---|
+| Part-level loading (10-13) + stand-ins (10-14) | optimizer bundle lists; parts groups' ModularPrefabs | ModularWorkshop (all 4 configure methods, UI, T&H pools, categories, manager rebuild), Optimizer, MuzzleScripts2, H3MP | **2 bugs**: barrel/handguard/stock configured outside any hook -> vault/T&H/H3MP got the wrong part (10-13) or an empty stand-in + NRE (10-14). Reproduced (test 25, gate off), fixed by `MwoEnsure`, green. Skins of a part in separate skin packs were not loaded with it: fixed (optimizer skin table). Manager rebuilds its list only at start / manual "Reload Database": stand-ins safe. |
+| Hand guard re-bind (10-13) | hands' SteamVR_Behaviour_Pose.poseAction | SteamVR_Behaviour_Pose OnEnable/OnDisable, scene change | **bug** (menu return, hands dead): fixed 10-14 (`PoseUnhook`), test 24. |
+| Hand guard steps 1-2 | action sets on; hand transform written each frame | HandStabilizer (smooths the pose update with Lerp), other hand mods | **risk**: "stuck" = 50 mm from raw pose for 0.75 s would trip on smoothing; now stuck = controller moves > 30 mm while hand moves < 2 mm. Never fired in kept logs. NOT tested (needs controllers awake). |
+| Light packs (10-14) | which file AssetBundle.LoadFromFile opens | all loaders | **bug**: matched by file name only; `mw_bruen_p890` exists in two mods; a mod update would leave a stale copy. Now tied to the original's full path, size and time (`light.txt`). |
+| Tame config rebinders | FBT2 FixedUpdate runs once | FBT2 reads config into fields | **bug**: in-game config changes stopped applying; now re-runs on SettingChanged / ConfigReloaded. ThingFlinger throttle: mod not installed, no effect. |
+| Later plugins (Sosig Hat Realism) | plugin starts after arrival | its RegisterWearable postfix | only sosigs spawned before it starts miss the hat offset. Accepted. |
+| Sosig models on demand | CSMF model list entries empty until needed | TryAttachProxy (incl. Random pool), SpawnBloodImpact, wrist menu | all readers go through filled entries. OK. |
+| Sosig voices on demand | none | - | does not install on this CSL version (logs it). |
+| Fast DLL lookup | BepInEx assembly resolve | BepInEx.Utility.TryResolveDllAssembly | same order, same LoadFile/ReadAssembly; a DLL created after start is not seen. Accepted. |
+| Boost spawn loads | Application.backgroundLoadingPriority | SteamVR_LoadLevel sets Low after loads | restored only when still ours. OK. |
+| Session log | ~200 timing patches on live types | - | first version (all 9249) made frames 19-75 ms: replaced 10-14. |
+| Page file helper | HKLM PagingFiles via FastLoadHelper.exe (asked once) | - | invent60 said yes 10-14; needs a Windows restart. |
+
+Still owed: the vault-part loads are synchronous (frames up to 5.9 s in test 25 with system commit low); the hand-guard
+stuck test is unverified with controllers awake; no headset check of any of the above.
