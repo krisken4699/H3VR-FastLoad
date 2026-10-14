@@ -55,6 +55,7 @@ namespace FastLoad
         private static bool s_reselecting;
 
         public static int Made;
+        public static string LastTimes = "";
         public static int Replaced;
         public static int Picked;
 
@@ -173,6 +174,8 @@ namespace FastLoad
         {
             int made = 0;
             if (string.IsNullOrEmpty(group) || index == null) return 0;
+            System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
+            double look = 0, sheets = 0;
             ModularWorkshopPartsDefinition def = null;
             Dictionary<string, bool> names = null;
             foreach (KeyValuePair<string, PartIndex.Entry> pair in index.Entries)
@@ -181,8 +184,14 @@ namespace FastLoad
                 if (!PartIndex.Complete(e) || !e.Groups.ContainsKey(group)) continue;
                 string madeKey = pair.Key + "|" + group;
                 if (s_made.ContainsKey(madeKey)) continue;
-                if (MwoParts.IsRegistered(pair.Key) || !ReferenceEquals(MwoParts.Look(pair.Key), e)) continue;
+                double t0 = sw.Elapsed.TotalMilliseconds;
+                bool skip = MwoParts.IsRegistered(pair.Key) || !ReferenceEquals(MwoParts.Look(pair.Key), e);
+                double t1 = sw.Elapsed.TotalMilliseconds;
+                look += t1 - t0;
+                if (skip) continue;
                 Texture2D atlas = Atlas(pair.Key, e.List.Count);
+                double t2 = sw.Elapsed.TotalMilliseconds;
+                sheets += t2 - t1;
                 if (atlas == null) continue;
                 s_made[madeKey] = true;
                 if (def == null)
@@ -210,28 +219,10 @@ namespace FastLoad
                     PartIndex.Part part = e.List[i];
                     if (part.Group != group || names.ContainsKey(part.Name)) continue;
                     names[part.Name] = true;
-                    if (s_root == null)
-                    {
-                        GameObject root = new GameObject("FastLoad modular stand-ins");
-                        root.SetActive(false);
-                        UnityEngine.Object.DontDestroyOnLoad(root);
-                        s_root = root.transform;
-                    }
-                    GameObject go = new GameObject("FastLoad stand-in " + part.Name);
-                    go.SetActive(false);
-                    go.transform.SetParent(s_root, false);
-                    // On an object that is off: the part's own start-up code never runs.
-                    ModularWeaponPart stand = go.AddComponent<ModularWeaponPart>();
-                    stand.Name = part.Name;
-                    stand.Icon = Sprite.Create(atlas, new Rect((i % cols) * Tile, (i / cols) * Tile, Tile, Tile), new Vector2(0.5f, 0.5f));
-                    stand.RemovedFromSpawnTable = part.NoSpawn;
-                    stand.AdditionalSpawnTableEntries = part.ExtraSpawn;
-                    stand.AttachmentMounts = new FistVR.FVRFireArmAttachmentMount[0];
-                    stand.SubAttachmentPoints = new ModularWeaponPartsAttachmentPoint[0];
-                    stand.SubQuickBeltSlots = new FistVR.FVRQuickBeltSlot[0];
-                    stand.MeshRenderers = new MeshRenderer[0];
-                    stand.ParentToFirearm = new Transform[0];
-                    stand.AlsoOccupiesPointWithModularPartsGroupIDs = new string[0];
+                    GameObject go;
+                    string poolKey = pair.Key + "|" + i;
+                    if (s_pool.TryGetValue(poolKey, out go) && go != null) s_pool.Remove(poolKey);
+                    else go = MakeStandIn(part, atlas, i, cols);
                     def.ModularPrefabs.Add(go);
                     Stub s = new Stub();
                     s.Go = go;
@@ -241,7 +232,83 @@ namespace FastLoad
                 }
             }
             Made += made;
+            LastTimes = "file checks " + (int)look + " ms, picture sheets " + (int)sheets + " ms, objects " + (int)(sw.Elapsed.TotalMilliseconds - look - sheets) + " ms";
             return made;
+        }
+
+        /// <summary>Stand-ins made ahead of time, by "bundle path|part number": a panel then only hooks them up.</summary>
+        private static readonly Dictionary<string, GameObject> s_pool = new Dictionary<string, GameObject>(StringComparer.OrdinalIgnoreCase);
+        private static List<KeyValuePair<string, PartIndex.Entry>> s_prepList;
+        private static int s_prepEntry;
+        private static int s_prepPart;
+        private static readonly System.Diagnostics.Stopwatch s_prepWatch = new System.Diagnostics.Stopwatch();
+        public static int Prepared;
+
+        private static GameObject MakeStandIn(PartIndex.Part part, Texture2D atlas, int i, int cols)
+        {
+            if (s_root == null)
+            {
+                GameObject root = new GameObject("FastLoad modular stand-ins");
+                root.SetActive(false);
+                UnityEngine.Object.DontDestroyOnLoad(root);
+                s_root = root.transform;
+            }
+            GameObject go = new GameObject("FastLoad stand-in " + part.Name);
+            go.SetActive(false);
+            go.transform.SetParent(s_root, false);
+            // On an object that is off: the part's own start-up code never runs.
+            ModularWeaponPart stand = go.AddComponent<ModularWeaponPart>();
+            stand.Name = part.Name;
+            stand.Icon = Sprite.Create(atlas, new Rect((i % cols) * Tile, (i / cols) * Tile, Tile, Tile), new Vector2(0.5f, 0.5f));
+            stand.RemovedFromSpawnTable = part.NoSpawn;
+            stand.AdditionalSpawnTableEntries = part.ExtraSpawn;
+            stand.AttachmentMounts = new FistVR.FVRFireArmAttachmentMount[0];
+            stand.SubAttachmentPoints = new ModularWeaponPartsAttachmentPoint[0];
+            stand.SubQuickBeltSlots = new FistVR.FVRQuickBeltSlot[0];
+            stand.MeshRenderers = new MeshRenderer[0];
+            stand.ParentToFirearm = new Transform[0];
+            stand.AlsoOccupiesPointWithModularPartsGroupIDs = new string[0];
+            return go;
+        }
+
+        /// <summary>Once a frame: makes stand-ins ahead of time for every known bundle, about 2 ms a frame, so no panel has to.</summary>
+        public static void Prepare(PartIndex index)
+        {
+            if (index == null) return;
+            if (s_prepList == null)
+            {
+                s_prepList = new List<KeyValuePair<string, PartIndex.Entry>>(index.Entries);
+                s_prepEntry = 0;
+                s_prepPart = 0;
+            }
+            if (s_prepEntry >= s_prepList.Count) return;
+            s_prepWatch.Reset();
+            s_prepWatch.Start();
+            while (s_prepEntry < s_prepList.Count && s_prepWatch.Elapsed.TotalMilliseconds < 2.0)
+            {
+                KeyValuePair<string, PartIndex.Entry> pair = s_prepList[s_prepEntry];
+                PartIndex.Entry e = pair.Value;
+                if (s_prepPart == 0 && (!PartIndex.Complete(e) || MwoParts.IsRegistered(pair.Key) || !ReferenceEquals(MwoParts.Look(pair.Key), e)))
+                {
+                    s_prepEntry++;
+                    continue;
+                }
+                Texture2D atlas = Atlas(pair.Key, e.List.Count);
+                if (atlas == null || s_prepPart >= e.List.Count)
+                {
+                    s_prepEntry++;
+                    s_prepPart = 0;
+                    continue;
+                }
+                string key = pair.Key + "|" + s_prepPart;
+                if (!s_pool.ContainsKey(key))
+                {
+                    s_pool[key] = MakeStandIn(e.List[s_prepPart], atlas, s_prepPart, PartIndex.PictureColumns(e.List.Count));
+                    Prepared++;
+                }
+                s_prepPart++;
+            }
+            if (s_prepEntry >= s_prepList.Count) Timeline.Write("DEF", "modular parts: " + Prepared + " stand-ins made ahead of time");
         }
 
         private static Texture2D Atlas(string bundlePath, int parts)
@@ -434,8 +501,10 @@ namespace FastLoad
             else if (s_testPanel.ModularPhysicalObject != null) s_testPanel.ModularPhysicalObject.AllAttachmentPoints.TryGetValue(s_testGroup, out point);
             if (point == null || point.SelectedModularWeaponPart != s_testName) return null;
             ModularWeaponPart on = point.ModularPartPoint != null ? point.ModularPartPoint.GetComponent<ModularWeaponPart>() : null;
-            int renderers = on != null ? on.GetComponentsInChildren<Renderer>(true).Length : 0;
-            return "'" + s_testName + "' is on the gun, " + renderers + " renderers";
+            if (on == null) return "'" + s_testName + "' selected but NO PART OBJECT at the point";
+            bool stand = on.name.IndexOf("FastLoad stand-in", StringComparison.Ordinal) >= 0;
+            int meshes = on.MeshRenderers != null ? on.MeshRenderers.Length : -1;
+            return "'" + s_testName + "' is on the gun as " + (stand ? "A STAND-IN (wrong)" : "the real part") + " '" + on.name + "', " + meshes + " mesh renderers";
         }
     }
 }

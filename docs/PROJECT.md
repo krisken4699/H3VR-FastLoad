@@ -405,3 +405,14 @@ do it. do the exact same thing. or cant you? push this current version first tho
 
 Items: (1) push the current version first; (2) find out exactly what Unity does on the main thread when it loads
 textures; (3) do that work ourselves off the main thread, in our own helper process if need be, or force it async.
+
+### 2026-10-14 evening: stand-ins measured in the game (test 20, 21)
+
+- Gun onto the ModulAR platform, 19 panels, 739 parts listed from the cache: 20 s window longest frame 77 ms, commit
+  +1 MB, textures +0 (was 7798 ms, +23.1 GB). Stand-ins are made ahead of time at start (1730, about 2 ms a frame);
+  made in the panel's own frame they cost about 0.8 ms each (570 ms frame).
+- Pressing a stand-in: Noveske N4 handguard (pack already in) 175 ms; Icarus A2 grip (mw_mw_ar2) 4.3 s in the
+  background, longest frame 67 ms, +845 MB; both times the real part object is on the gun (`pick` checks the name).
+- `check` before and after the picks differs (transforms 188 -> 861, missing materials 3 -> 11): the 19 panels are
+  parented to the gun; NOT yet compared with the same picks without stand-ins.
+- Spawning ModulAeroM4E1 is unchanged: 13.9-18 s, +7.9 GB, frames up to 2.5 s. Next.

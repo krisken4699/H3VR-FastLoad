@@ -177,6 +177,7 @@ namespace FastLoad
         /// <summary>Called every frame by the plugin: writes the index a few seconds after the last thing was learned.</summary>
         public static void Tick()
         {
+            MwoStubs.Prepare(s_index);
             if (MwoStubs.Tick())
             {
                 s_indexDirty = true;
@@ -417,8 +418,10 @@ namespace FastLoad
             {
                 string group = __instance != null ? __instance.ModularPartsGroupID : null;
                 if (string.IsNullOrEmpty(group)) return;
+                System.Diagnostics.Stopwatch sw = System.Diagnostics.Stopwatch.StartNew();
                 int made = MwoStubs.EnsureGroup(group, s_index);
-                if (made > 0) Timeline.Write("DEF", "modular parts: workshop panel for '" + group + "': " + made + " parts listed without loading their bundles");
+                if (made > 0) Timeline.Write("DEF", "modular parts: workshop panel for '" + group + "': " + made + " parts listed without loading their bundles ("
+                    + MwoStubs.LastTimes + ", " + (int)sw.Elapsed.TotalMilliseconds + " ms)");
                 IDictionary dic = s_groupToBundles.GetValue(null) as IDictionary;
                 List<string> all = dic != null && dic.Contains(group) ? dic[group] as List<string> : null;
                 if (all == null) return;
