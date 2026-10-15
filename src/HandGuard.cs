@@ -68,6 +68,82 @@ namespace FastLoad
             m_stuck.Reset();
         }
 
+        private const string RightPosePath = "/actions/default/in/Pose";
+
+        /// <summary>
+        /// The game's hand pose action as SteamVR generated it (SteamVR_Actions.default_Pose). Not looked up by name:
+        /// the looked-up one is the one that goes wrong (see RepairGlobal). Null when input is not ready.
+        /// </summary>
+        private static SteamVR_Action_Pose RightPose()
+        {
+            try
+            {
+                // Not SteamVR_Input.initialized: it reads false here all game long while input works.
+                if (SteamVR_Input.actions == null) return null;
+                SteamVR_Action_Pose a = SteamVR_Actions.default_Pose;
+                return a != null && string.Equals(a.fullPath, RightPosePath, StringComparison.OrdinalIgnoreCase) ? a : null;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        private static System.Reflection.MethodInfo s_initCopy;
+        private int m_globalRepairs;
+
+
+
+        /// <summary>
+        /// The cause of hands dead after a map change (traced 2026-10-15): while the game runs, SteamVR hands out its
+        /// one shared action object instead of copies (GetCopy returns 'this' when SteamVR_Behaviour.isPlaying), and
+        /// every new SteamVR_Behaviour_Pose starts with poseAction = that shared "Pose" action. When something whose
+        /// pose component is saved as /actions/mixedreality/in/ExternalCamera loads in the middle of the game, Unity
+        /// writes that into the shared object: from then on SteamVR's "Pose" (SteamVR_Input.actions) is
+        /// ExternalCamera, and every hand and pose component loaded after that gets it. The generated
+        /// SteamVR_Actions.default_Pose is a different object and stays right; it is put back from there.
+        /// </summary>
+        private void RepairGlobal(SteamVR_Action_Pose right)
+        {
+            SteamVR_Action[] acts = SteamVR_Input.actions;
+            if (acts == null) return;
+            int fixedCount = 0;
+            for (int i = 0; i < acts.Length; i++)
+            {
+                SteamVR_Action_Pose p = acts[i] as SteamVR_Action_Pose;
+                if (p == null || ReferenceEquals(p, right) || p.GetShortName() != "Pose") continue;
+                if (string.Equals(p.fullPath, RightPosePath, StringComparison.OrdinalIgnoreCase)) continue;
+                if (ReferenceEquals(s_initCopy, null)) s_initCopy = p.GetType().GetMethod("InitializeCopy", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                if (ReferenceEquals(s_initCopy, null)) return;
+                string was = p.fullPath;
+                s_initCopy.Invoke(p, new object[] { RightPosePath, right.GetSourceMap() });
+                fixedCount++;
+                Say("SteamVR's shared 'Pose' action had become " + was + "; put back to " + p.fullPath + " (global repair " + (++m_globalRepairs) + ", scene "
+                    + SceneManager.GetActiveScene().name + "). Pose components that are not hands: " + OtherPoseComponents());
+            }
+        }
+
+        /// <summary>Every SteamVR_Behaviour_Pose that is not on a hand, with the action it holds: what writes ExternalCamera.</summary>
+        private static string OtherPoseComponents()
+        {
+            string text = "";
+            SteamVR_Behaviour_Pose[] all = Resources.FindObjectsOfTypeAll<SteamVR_Behaviour_Pose>();
+            for (int i = 0; i < all.Length; i++)
+            {
+                SteamVR_Behaviour_Pose bp = all[i];
+                if (bp == null || bp.GetComponent<FVRViveHand>() != null) continue;
+                Transform t = bp.transform;
+                string path = t.name;
+                while (t.parent != null)
+                {
+                    t = t.parent;
+                    path = t.name + "/" + path;
+                }
+                text += "[" + path + " scene='" + bp.gameObject.scene.name + "' action=" + (bp.poseAction != null ? bp.poseAction.fullPath : "none") + "] ";
+            }
+            return text.Length == 0 ? "none" : text;
+        }
+
         private void OnCameraPreCull(Camera cam)
         {
             if (!cam.stereoEnabled) return;
@@ -139,10 +215,26 @@ namespace FastLoad
                 // The hand itself (FVRViveHand.Pose) has /actions/default/in/Pose; its SteamVR_Behaviour_Pose came up
                 // bound to /actions/mixedreality/in/ExternalCamera, an action of a set that is never on, so it never
                 // moved the hand. Put right at once, connected controller or not, so it is never seen.
+                SteamVR_Action_Pose rightGlobal = RightPose();
+                if (rightGlobal != null) RepairGlobal(rightGlobal);
                 for (int i = 0; i < mm.Hands.Length; i++)
                 {
                     FVRViveHand h = mm.Hands[i];
-                    if (h == null || h.Pose == null) continue;
+                    if (h == null) continue;
+                    // The hand's own Pose can come up wrong too (seen 2026-10-15: back in the main menu after the range,
+                    // FVRViveHand.Pose itself = ExternalCamera, every other action of the hand right). Then the hand
+                    // waits for ever in InitCMode for that action to become active and never starts. Put the right
+                    // action there, looked up by set and name, not taken from anything that came with the scene.
+                    SteamVR_Action_Pose right = RightPose();
+                    if (right != null && (h.Pose == null || !string.Equals(h.Pose.fullPath, right.fullPath, StringComparison.OrdinalIgnoreCase)))
+                    {
+                        string was = h.Pose != null ? h.Pose.fullPath : "nothing";
+                        h.Pose = right;
+                        m_repairs++;
+                        Say("hand '" + h.name + "' itself had " + was + " as its pose instead of " + right.fullPath + "; set right (repair " + m_repairs + " this run, scene "
+                            + SceneManager.GetActiveScene().name + ")");
+                    }
+                    if (h.Pose == null) continue;
                     SteamVR_Behaviour_Pose bp = h.GetComponent<SteamVR_Behaviour_Pose>();
                     if (bp == null || bp.poseAction == null) continue;
                     string has = bp.poseAction.fullPath;

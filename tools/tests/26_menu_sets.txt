@@ -1,0 +1,13 @@
+wait items
+wait 8
+hands
+vrsets                           # in the range (reached by the start-scene jump)
+scene MainMenu3
+wait 15
+hands
+vrsets                           # back in the menu
+scene IndoorRange_Updated
+wait 15
+hands
+vrsets                           # range again, reached from the menu by hand
+quit

@@ -1,0 +1,9 @@
+wait 30
+vrsets                           # main menu at game start
+scene IndoorRange_Updated
+wait 15
+vrsets
+scene MainMenu3
+wait 15
+vrsets
+quit

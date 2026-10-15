@@ -190,6 +190,7 @@ namespace FastLoad
                     else if (verb == "inputoff") m_note = InputOff();
                     else if (verb == "steamvroff") m_note = SteamVrOff();
                     else if (verb == "hands") m_note = HandsNow();
+                    else if (verb == "vrsets") m_note = VrSets();
                     else if (verb == "look") m_note = Look();
                     else if (verb == "iconlook") m_note = IconLook(rest);
                     else if (verb == "iconaudit") m_note = IconAudit();
@@ -801,6 +802,98 @@ namespace FastLoad
                 if (how == "rebind") slots[i].Key.SetTexture(slots[i].Value, t);
             }
             return "touch " + how + ": " + got + " textures answered, " + fake + " slots hold a dead reference, " + nulls + " slots empty";
+        }
+
+        private static string ActionFields(object o)
+        {
+            if (o == null) return " none";
+            string text = "";
+            foreach (System.Reflection.FieldInfo f in o.GetType().GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+            {
+                if (!typeof(Valve.VR.SteamVR_Action).IsAssignableFrom(f.FieldType)) continue;
+                Valve.VR.SteamVR_Action a = f.GetValue(o) as Valve.VR.SteamVR_Action;
+                string path = a == null ? "null" : a.fullPath;
+                text += " " + f.Name + "=" + (path != null && path.StartsWith("/actions/default/", StringComparison.Ordinal) ? "ok" : path);
+            }
+            return text;
+        }
+
+        /// <summary>Which SteamVR action sets are on, and every object that switches one on at Start / off when destroyed.</summary>
+        private static string VrSets()
+        {
+            string text = "sets on:";
+            Valve.VR.SteamVR_ActionSet[] sets = Valve.VR.SteamVR_Input.actionSets;
+            for (int i = 0; sets != null && i < sets.Length; i++)
+                if (sets[i] != null && sets[i].IsActive(Valve.VR.SteamVR_Input_Sources.Any)) text += " " + sets[i].GetShortName();
+            try
+            {
+                Valve.VR.SteamVR_Behaviour[] behs = Resources.FindObjectsOfTypeAll<Valve.VR.SteamVR_Behaviour>();
+                text += " | SteamVR_Behaviour x" + behs.Length;
+                for (int i = 0; i < behs.Length; i++) if (behs[i] != null) text += " ['" + behs[i].name + "' scene='" + behs[i].gameObject.scene.name + "' on=" + behs[i].isActiveAndEnabled + "]";
+                text += " instance=" + (Valve.VR.SteamVR_Behaviour.instance != null);
+                Valve.VR.SteamVR_Render[] rens = Resources.FindObjectsOfTypeAll<Valve.VR.SteamVR_Render>();
+                text += " | SteamVR_Render x" + rens.Length + " pauseRendering=" + Valve.VR.SteamVR_Render.pauseRendering;
+                for (int i = 0; i < rens.Length; i++) if (rens[i] != null) text += " ['" + rens[i].name + "' on=" + rens[i].isActiveAndEnabled + "]";
+                text += " | input initialized=" + Valve.VR.SteamVR_Input.initialized + " startupFrame=" + Valve.VR.SteamVR_Input.isStartupFrame + " SteamVR state=" + Valve.VR.SteamVR.initializedState;
+                FistVR.FVRMovementManager mm = FistVR.GM.CurrentMovementManager;
+                if (mm != null && mm.Hands != null && mm.Hands.Length > 0 && mm.Hands[0] != null && mm.Hands[0].Pose != null)
+                {
+                    FistVR.FVRViveHand h = mm.Hands[0];
+                    Valve.VR.SteamVR_Action_Pose pose = h.Pose;
+                    text += " | left Pose " + pose.fullPath + " active=" + pose.active + " src.active=" + pose[h.HandSource].active + " activeBinding=" + pose[h.HandSource].activeBinding
+                        + " lastActive=" + pose[h.HandSource].lastActive + " connected=" + pose[h.HandSource].deviceIsConnected + " set active=" + pose.actionSet.IsActive(h.HandSource)
+                        + " changedTime=" + pose[h.HandSource].changedTime.ToString("0.0") + " now=" + Time.realtimeSinceStartup.ToString("0.0") + " source=" + h.HandSource;
+                }
+            }
+            catch (Exception e)
+            {
+                text += " | state read failed: " + e.GetType().Name + ": " + e.Message;
+            }
+            try
+            {
+                Valve.VR.SteamVR_Action_Pose byName = Valve.VR.SteamVR_Input.GetAction<Valve.VR.SteamVR_Action_Pose>("default", "Pose");
+                Valve.VR.SteamVR_Action_Pose generated = Valve.VR.SteamVR_Actions.default_Pose;
+                text += " | lookup default/Pose -> " + (byName != null ? byName.fullPath : "null") + "; SteamVR_Actions.default_Pose -> " + (generated != null ? generated.fullPath : "null");
+                Valve.VR.SteamVR_Action[] acts = Valve.VR.SteamVR_Input.actions;
+                for (int i = 0; acts != null && i < acts.Length; i++)
+                    if (acts[i] is Valve.VR.SteamVR_Action_Pose) text += " | actions[" + i + "] " + acts[i].GetShortName() + " -> " + acts[i].fullPath + " map#" + (acts[i].GetSourceMap() != null ? acts[i].GetSourceMap().GetHashCode() : 0);
+            }
+            catch (Exception e)
+            {
+                text += " | global read failed: " + e.GetType().Name + ": " + e.Message;
+            }
+            // Every SteamVR action the hands and their input object carry, with the action it is bound to.
+            try
+            {
+                FistVR.FVRMovementManager mm2 = FistVR.GM.CurrentMovementManager;
+                if (mm2 != null && mm2.Hands != null && mm2.Hands.Length > 0 && mm2.Hands[0] != null)
+                {
+                    text += " | left hand actions:" + ActionFields(mm2.Hands[0]) + " | input:" + ActionFields(mm2.Hands[0].Input);
+                    Valve.VR.SteamVR_Behaviour_Pose bp = mm2.Hands[0].GetComponent<Valve.VR.SteamVR_Behaviour_Pose>();
+                    if (bp != null) text += " | pose component: " + (bp.poseAction != null ? bp.poseAction.fullPath : "none");
+                }
+            }
+            catch (Exception e)
+            {
+                text += " | actions read failed: " + e.GetType().Name + ": " + e.Message;
+            }
+            Valve.VR.SteamVR_ActivateActionSetOnLoad[] all = Resources.FindObjectsOfTypeAll<Valve.VR.SteamVR_ActivateActionSetOnLoad>();
+            text += " | switchers " + all.Length + ":";
+            for (int i = 0; i < all.Length; i++)
+            {
+                Valve.VR.SteamVR_ActivateActionSetOnLoad a = all[i];
+                if (a == null) continue;
+                Transform t = a.transform;
+                string path = t.name;
+                while (t.parent != null)
+                {
+                    t = t.parent;
+                    path = t.name + "/" + path;
+                }
+                text += " [" + path + " scene='" + a.gameObject.scene.name + "' active=" + a.gameObject.activeInHierarchy + " set=" + (a.actionSet != null ? a.actionSet.GetShortName() : "none")
+                    + " onStart=" + a.activateOnStart + " offOnDestroy=" + a.deactivateOnDestroy + " id=" + a.GetInstanceID() + "]";
+            }
+            return text;
         }
 
         private string HandsNow()

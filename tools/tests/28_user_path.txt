@@ -1,0 +1,7 @@
+wait items
+wait 8
+vrsets                           # range, reached by the start-scene jump (what invent60 does)
+scene MainMenu3
+wait 15
+vrsets                           # back in the menu
+quit

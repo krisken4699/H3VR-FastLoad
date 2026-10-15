@@ -463,3 +463,25 @@ path with a red run (without the fix) and a green run.
 
 Still owed: the vault-part loads are synchronous (frames up to 5.9 s in test 25 with system commit low); the hand-guard
 stuck test is unverified with controllers awake; no headset check of any of the above.
+
+### 2026-10-15: hands dead back in the main menu, the cause found
+
+invent60: hands work in the range, back to the main menu they hang under him and nothing moves. The fix of 10-14
+(PoseUnhook) only stopped the error spam. Found with tools/tests/28_user_path.txt (start jump -> range -> menu) and the
+`vrsets` step (every SteamVR action of the hand, the global table, SteamVR objects):
+- In the menu every action of the hand is right except `Pose`, on the hand (FVRViveHand.Pose) and on its
+  SteamVR_Behaviour_Pose: both `/actions/mixedreality/in/ExternalCamera`. InitCMode waits for ever for that action to be
+  active, so the hand never starts (NOINIT, input off, not connected).
+- SteamVR's own table is wrong: `SteamVR_Input.actions[0]` (short name "Pose") has ExternalCamera's source map, already
+  in the range. `SteamVR_Actions.default_Pose` is another object and right.
+- SteamVR code: `GetCopy()` returns the shared object while `SteamVR_Behaviour.isPlaying` (ShouldMakeCopy), and every
+  SteamVR_Behaviour_Pose starts with `poseAction = GetAction("Pose")`, i.e. that shared object. Something whose pose
+  component is saved with ExternalCamera loading mid-game ends up writing into it; the guard caught it in the range,
+  the object present then: `SteamVR_ExternalCamera/Controller (third)` (SteamVR's external camera). Every hand loaded
+  after that gets ExternalCamera. Which code instantiates the external camera is NOT traced.
+- Fix (HandGuard, every 0.25 s): put the shared "Pose" action back from default_Pose (InitializeCopy) when it is wrong,
+  and give hands and their pose components default_Pose when theirs is anything else. Run after: global repaired in
+  the range, menu hand Pose and component `/actions/default/in/Pose`, 0 errors.
+- NOT verified: hands actually starting in the menu. The controllers were asleep for these runs (not connected even in
+  the start menu), so it needs the headset on.
+- Also learned: `SteamVR_Input.initialized` reads false all game in this build although input works.
